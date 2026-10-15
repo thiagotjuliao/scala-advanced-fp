@@ -1,7 +1,5 @@
 package advfp.ch01typeclassesandlaws
 
-import advfp.core.unsolved
-
 /** Exercise 02 — Build monoids out of semigroups.
   *
   * A semigroup on the values is enough to make a monoid of two containers:
@@ -22,6 +20,22 @@ import advfp.core.unsolved
   */
 object Exercise02:
 
-  given mapMonoid: [K, V: Semigroup] => Monoid[Map[K, V]] = unsolved
+  given mapMonoid: [K, V: Semigroup] => Monoid[Map[K, V]] =
+    Monoid.instance(Map()) { (mp1, mp2) =>
+      (mp1.keySet ++ mp2.keySet)
+        .map: k =>
+          (mp1.get(k), mp2.get(k)) match
+            case (Some(v), None) => (k, v)
+            case (None, Some(v)) => (k, v)
+            case (Some(v1), Some(v2)) => (k, v1 |+| v2)
+            case (None, None) =>
+              throw AssertionError(s"key $k cannot be found on any maps, probably a bug")
+        .toMap
+    }
 
-  given optionMonoid: [A: Semigroup] => Monoid[Option[A]] = unsolved
+  given optionMonoid: [A: Semigroup] => Monoid[Option[A]] =
+    Monoid.instance(None) {
+      case (Some(x), Some(y)) => Some(x |+| y)
+      case (ox, None) => ox
+      case (None, oy) => oy
+    }

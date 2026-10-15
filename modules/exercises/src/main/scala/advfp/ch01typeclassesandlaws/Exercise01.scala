@@ -1,7 +1,5 @@
 package advfp.ch01typeclassesandlaws
 
-import advfp.core.unsolved
-
 /** Exercise 01 — Give `Int` two monoids, and keep them apart.
   *
   * Integers form a monoid under addition and another under multiplication.
@@ -26,7 +24,7 @@ object Exercise01:
     extension (s: Sum) def value: Int = s
 
     /** Addition. */
-    given Monoid[Sum] = unsolved
+    given Monoid[Sum] = Monoid.instance(0)(_ + _)
 
   opaque type Prod = Int
 
@@ -35,7 +33,13 @@ object Exercise01:
     extension (p: Prod) def value: Int = p
 
     /** Multiplication. */
-    given Monoid[Prod] = unsolved
+    given Monoid[Prod] = Monoid.instance(1)(_ * _)
 
   /** Combines every element, left to right. */
-  def combineAll[A: Monoid](as: List[A]): A = unsolved
+  def combineAll[A: Monoid](as: List[A]): A =
+    def loop(as: List[A], acc: A): A =
+      as match
+        case Nil => acc
+        case h :: t => loop(t, acc |+| h)
+    loop(as, Monoid[A].empty)
+end Exercise01

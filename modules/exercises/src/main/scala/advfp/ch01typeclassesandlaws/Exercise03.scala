@@ -1,7 +1,5 @@
 package advfp.ch01typeclassesandlaws
 
-import advfp.core.unsolved
-
 /** Exercise 03 — Write two functors, one of them for a type with two parameters.
   *
   * `Tree` is a binary tree with values at the leaves. Its functor transforms
@@ -23,6 +21,18 @@ object Exercise03:
     case Leaf(value: A)
     case Branch(left: Tree[A], right: Tree[A])
 
-  given treeFunctor: Functor[Tree] = unsolved
+  given treeFunctor: Functor[Tree] =
+    new Functor[Tree]:
+      extension [A](fa: Tree[A])
+        override def map[B](f: A => B): Tree[B] =
+          fa match
+            case Tree.Leaf(a) => Tree.Leaf(f(a))
+            case Tree.Branch(l, r) => Tree.Branch(l.map(f), r.map(f))
 
-  given eitherFunctor: [E] => Functor[[A] =>> Either[E, A]] = unsolved
+  given eitherFunctor: [E] => Functor[[A] =>> Either[E, A]] =
+    new Functor[[A] =>> Either[E, A]]:
+      extension [A](fa: Either[E, A])
+        override def map[B](f: A => B): Either[E, B] =
+          fa match
+            case Right(a) => Right(f(a))
+            case Left(e) => Left(e)

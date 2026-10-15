@@ -1,7 +1,5 @@
 package advfp.ch01typeclassesandlaws
 
-import advfp.core.unsolved
-
 /** Exercise 04 — Find where a wrong instance hides.
   *
   * `reversing` below is a `Functor[List]` that compiles, transforms every
@@ -24,6 +22,9 @@ object Exercise04:
   val reversing: Functor[List] = new Functor[List]:
     extension [A](fa: List[A]) def map[B](f: A => B): List[B] = fa.reverse.map(f)
 
-  def counterexample: List[Int] = unsolved
+  def counterexample: List[Int] = List(1, 2)
 
-  def blindSpots: List[List[Int]] = unsolved
+  def blindSpots: List[List[Int]] =
+    List(1, 1, 1, 1, 1, 1) ::
+      List(1, 0, 1, 0, 1) ::
+      List(1, 1, 2, 3, 3, 2, 1, 1) :: Nil
