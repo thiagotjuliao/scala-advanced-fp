@@ -56,3 +56,11 @@ replay_pid*.log
 # the cache to ./null in the working directory — tens of megabytes of jars,
 # untracked, one careless `git add .` away from the history.
 null/
+
+# ==============================================================================
+# This project — additions to the template (project-templates/scala-sbt)
+# ==============================================================================
+
+# Scratch worksheets are the point of modules/playground/, and the ones worth
+# keeping are kept.
+!modules/playground/**/*.worksheet.sc
