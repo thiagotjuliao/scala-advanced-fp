@@ -32,8 +32,10 @@ jobs:
         run: |
           set -o pipefail
           sbt -batch verify 2>&1 | tee sbt.log || {
-            grep -F '[error]' sbt.log | sed 's/\x1b\[[0-9;]*m//g' | head -40 |
-              sed 's/^/::error title=sbt verify::/'
+            # Colours first: sbt paints inside the brackets, `[<esc>[31merror...`.
+            sed 's/\x1b\[[0-9;]*m//g' sbt.log > sbt.plain.log
+            { grep -F '[error]' sbt.plain.log || tail -n 20 sbt.plain.log; } |
+              head -n 40 | sed 's/^/::error title=sbt verify::/'
             exit 1
           }
 
