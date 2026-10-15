@@ -23,9 +23,19 @@ jobs:
       - uses: sbt/setup-sbt@v1
 
       # The same gate scripts/finish-chapter.sh runs locally: formatting, the
-      # answer key green, and the exercises still compiling.
+      # answer key and the milestones green, and the exercises still compiling.
+      #
+      # sbt's `[error]` lines are re-emitted as annotations, so a red gate says
+      # why on the pull request itself, without opening the log.
       - name: sbt verify
-        run: sbt -batch verify
+        shell: bash
+        run: |
+          set -o pipefail
+          sbt -batch verify 2>&1 | tee sbt.log || {
+            grep -F '[error]' sbt.log | sed 's/\x1b\[[0-9;]*m//g' | head -40 |
+              sed 's/^/::error title=sbt verify::/'
+            exit 1
+          }
 
   practice:
     name: exercises (informational)
