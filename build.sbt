@@ -22,11 +22,14 @@ lazy val commonSettings = Seq(
   Test / scalacOptions ~= (_.filterNot(_ == CompilerFlags.unusedImports))
 )
 
-// Where a warning is a defect: the answer key and the two modules built from
-// scratch. Main sources only — test sources keep `base`, since `-Wall` turns
-// on the unused-import check that snippet assertions trip by design.
+// Where a warning is a defect: core, the answer key and the two modules built
+// from scratch. Main sources only — test sources keep `base`, since `-Wall`
+// turns on the unused-import check that snippet assertions trip by design.
+// The Test filter is needed: Test's options start from Compile's, so without
+// it the tests inherit `-Werror` too.
 lazy val strictSettings = Seq(
-  Compile / scalacOptions ++= CompilerFlags.strict
+  Compile / scalacOptions ++= CompilerFlags.strict,
+  Test / scalacOptions ~= (_.filterNot(CompilerFlags.strict.contains))
 )
 
 // The snippets of `assertTypeChecks` hide their dependencies from incremental
