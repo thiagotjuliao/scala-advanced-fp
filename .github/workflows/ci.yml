@@ -42,7 +42,7 @@ jobs:
             # [error] prefix, so the report is every line that names an error
             # or a source position, one annotation each: GitHub drops a
             # multi-line message, and shows at most ten per step.
-            grep -E 'rror|\.scala:[0-9]|\.sbt:[0-9]|^ *[0-9]+ *\|' sbt.plain.log |
+            grep -E 'rror|\[warn\]|\.scala:[0-9]|\.sbt:[0-9]|^ *[0-9]+ *\|' sbt.plain.log |
               grep -v -e 'elapsed time' -e 'Total time' | cut -c1-300 | head -n 10 |
               sed 's/^/::error title=sbt verify::/'
             exit 1
