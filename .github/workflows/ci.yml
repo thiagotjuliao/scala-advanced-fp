@@ -32,6 +32,9 @@ jobs:
         run: |
           set -o pipefail
           sbt -batch verify 2>&1 | tee sbt.log || {
+            # The report's own pipes end early on purpose (`head`); under the
+            # step's `bash -e` and pipefail, that would end the step first.
+            set +e +o pipefail
             # Escape sequences out first: sbt's thin client paints inside the
             # brackets (`[<esc>[31merror`) and clears lines with `<esc>[0J`.
             sed 's/\x1b\[[0-9;]*[A-Za-z]//g' sbt.log > sbt.plain.log
