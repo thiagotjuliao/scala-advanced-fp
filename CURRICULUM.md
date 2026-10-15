@@ -59,8 +59,8 @@ versions, never a library's.
 
 ### Chapter 01 — Typeclasses and laws
 
-`Semigroup`, `Monoid`, `Eq`, `Show` and `Functor`, written as Scala 3 typeclasses
-(`given`, `using`, `extension`). The central idea: a typeclass is its operations
+`Semigroup`, `Monoid` and `Functor`, written as Scala 3 typeclasses (`given`,
+`using`, `extension`). The central idea: a typeclass is its operations
 *and* its laws, and an instance that compiles but breaks a law is a bug the
 compiler cannot see. Coherence, orphan instances, and why one type can have
 several lawful monoids.

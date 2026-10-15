@@ -41,6 +41,12 @@ Then check that the spec is *discriminating*: run it against the stub, and
 against a deliberately wrong solution, and watch both fail. If a wrong answer
 passes, the spec is not testing the exercise.
 
+Definitions every exercise of a chapter shares — the chapter's typeclasses, say
+— go in one file, `Typeclasses.scala` or similar, present and identical in both
+modules. They are given, not exercises, and they belong to the chapter: a later
+chapter declares its own rather than importing them, so it can be studied on
+its own.
+
 ## 3. The stub third
 
 It must compile, it must not work, and it must say what is wanted in prose —
