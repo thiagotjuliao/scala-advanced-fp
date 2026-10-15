@@ -3,12 +3,13 @@ name: verify
 on:
   push:
     branches: [main]
+    tags: ['ch*', 'm*']
   pull_request:
     branches: [main]
 
 jobs:
   verify:
-    name: verify
+    name: gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -21,6 +22,48 @@ jobs:
 
       - uses: sbt/setup-sbt@v1
 
-      # The same alias to run locally before a push; see build.sbt.
+      # The same gate scripts/finish-chapter.sh runs locally: formatting, the
+      # answer key and the milestones green, and the exercises still compiling.
+      #
+      # sbt's `[error]` lines are re-emitted as annotations, so a red gate says
+      # why on the pull request itself, without opening the log.
       - name: sbt verify
-        run: sbt -batch verify
+        shell: bash
+        run: |
+          set -o pipefail
+          sbt -batch verify 2>&1 | tee sbt.log || {
+            # The report's own pipes end early on purpose (`head`); under the
+            # step's `bash -e` and pipefail, that would end the step first.
+            set +e +o pipefail
+            # Escape sequences out first: sbt's thin client paints inside the
+            # brackets (`[<esc>[31merror`) and clears lines with `<esc>[0J`.
+            sed 's/\x1b\[[0-9;]*[A-Za-z]//g' sbt.log > sbt.plain.log
+            # A compiler diagnostic spans several lines and only some carry the
+            # [error] prefix, so the report is every line that names an error
+            # or a source position, one annotation each: GitHub drops a
+            # multi-line message, and shows at most ten per step.
+            grep -E 'rror|\[warn\]|\.scala:[0-9]|\.sbt:[0-9]|^ *[0-9]+ *\|' sbt.plain.log |
+              grep -v -e 'elapsed time' -e 'Total time' | cut -c1-300 | head -n 10 |
+              sed 's/^/::error title=sbt verify::/'
+            exit 1
+          }
+
+  practice:
+    name: exercises (informational)
+    runs-on: ubuntu-latest
+    # Unsolved exercises are supposed to fail here. The job runs so the count is
+    # visible on every commit; it is not allowed to fail the build.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: sbt
+
+      - uses: sbt/setup-sbt@v1
+
+      - name: sbt practice
+        run: sbt -batch practice
