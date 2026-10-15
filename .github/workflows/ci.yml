@@ -32,10 +32,18 @@ jobs:
         run: |
           set -o pipefail
           sbt -batch verify 2>&1 | tee sbt.log || {
-            # Colours first: sbt paints inside the brackets, `[<esc>[31merror...`.
-            sed 's/\x1b\[[0-9;]*m//g' sbt.log > sbt.plain.log
-            { grep -F '[error]' sbt.plain.log || tail -n 20 sbt.plain.log; } |
-              head -n 40 | sed 's/^/::error title=sbt verify::/'
+            # Escape sequences out first: sbt's thin client paints inside the
+            # brackets (`[<esc>[31merror`) and clears lines with `<esc>[0J`.
+            sed 's/\x1b\[[0-9;]*[A-Za-z]//g' sbt.log > sbt.plain.log
+            # A compiler diagnostic spans several lines and only some carry the
+            # [error] prefix, so the report is the stretch of log that starts
+            # a little before the first error — joined into one annotation,
+            # since GitHub shows at most ten per step.
+            first="$(grep -n -F '[error]' sbt.plain.log | head -n 1 | cut -d: -f1)"
+            from=$(( ${first:-$(wc -l < sbt.plain.log)} - 25 ))
+            report="$(tail -n +"$(( from > 1 ? from : 1 ))" sbt.plain.log | head -n 60)"
+            report="${report//'%'/'%25'}"
+            echo "::error title=sbt verify::${report//$'\n'/'%0A'}"
             exit 1
           }
 
