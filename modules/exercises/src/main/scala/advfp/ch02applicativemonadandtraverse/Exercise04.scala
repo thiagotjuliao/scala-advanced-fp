@@ -1,7 +1,5 @@
 package advfp.ch02applicativemonadandtraverse
 
-import advfp.core.unsolved
-
 /** Exercise 04 — An applicative that is not a monad.
   *
   * `ZipList` combines lists position by position:
@@ -33,6 +31,7 @@ object Exercise04:
   final case class ZipList[A](values: LazyList[A])
 
   object ZipList:
+    def empty[A]: ZipList[A] = ZipList.of()
     def of[A](values: A*): ZipList[A] = ZipList(LazyList.from(values))
 
   /** The natural `flatMap` for a zipping `ap`, and one that agrees with it:
@@ -48,11 +47,28 @@ object Exercise04:
         .flatten
     )
 
-  given zipListApplicative: Applicative[ZipList] = unsolved
+  given zipListApplicative: Applicative[ZipList] =
+    new Applicative[ZipList]:
+      override def pure[A](a: A): ZipList[A] = ZipList(LazyList(a) #::: pure(a).values)
 
-  def m: ZipList[Int] = unsolved
+      extension [A](fa: ZipList[A])
+        override def map[B](f: A => B): ZipList[B] =
+          fa match
+            case ZipList(values) => ZipList(values.map(f))
 
-  def f: Int => ZipList[Int] = unsolved
+      extension [A, B](ff: ZipList[A => B])
+        override def ap(fa: ZipList[A]): ZipList[B] =
+          (ff, fa) match
+            case (ZipList(fs), ZipList(as)) => ZipList(fs.lazyZip(as).map((f, a) => f(a)))
 
-  def g: Int => ZipList[Int] = unsolved
+  def m: ZipList[Int] = ZipList.of(1, 2)
+
+  def f: Int => ZipList[Int] =
+    case 1 => ZipList.of(1) // z = 1
+    case _ => ZipList.of(2, 3) // f(2): y0 = 2, y1 = 3
+
+  def g: Int => ZipList[Int] =
+    case 1 => ZipList.of(0) // g(z): não vazio
+    case 2 => ZipList.of() // g(y0): vazio, derruba o lado direito
+    case _ => ZipList.of(7, 8) // g(y1): dois elementos, a posição 1 existe
 end Exercise04

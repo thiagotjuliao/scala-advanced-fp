@@ -1,7 +1,5 @@
 package advfp.ch02applicativemonadandtraverse
 
-import advfp.core.unsolved
-
 /** Exercise 01 — Write `Monad` for `Option`, `Either[E, *]` and `List`.
   *
   * Each instance writes `pure`, `ap` and `flatMap` — `Monad` here does not
@@ -23,8 +21,57 @@ import advfp.core.unsolved
   */
 object Exercise01:
 
-  given optionMonad: Monad[Option] = unsolved
+  given optionMonad: Monad[Option] =
+    new Monad[Option]:
+      override def pure[A](a: A): Option[A] = Some(a)
 
-  given eitherMonad: [E] => Monad[[A] =>> Either[E, A]] = unsolved
+      extension [A](fa: Option[A])
+        override def flatMap[B](f: A => Option[B]): Option[B] =
+          fa match
+            case Some(a) => f(a)
+            case None => None
 
-  given listMonad: Monad[List] = unsolved
+      extension [A](fa: Option[A])
+        override def map[B](f: A => B): Option[B] =
+          fa.flatMap(a => pure(f(a)))
+
+      extension [A, B](ff: Option[A => B])
+        override def ap(fa: Option[A]): Option[B] =
+          ff.flatMap(f => fa.map(a => f(a)))
+
+  given eitherMonad: [E] => Monad[[A] =>> Either[E, A]] =
+    new Monad[[A] =>> Either[E, A]]:
+      override def pure[A](a: A): Either[E, A] = Right(a)
+
+      extension [A](fa: Either[E, A])
+        override def flatMap[B](f: A => Either[E, B]): Either[E, B] =
+          fa match
+            case Right(a) => f(a)
+            case Left(e) => Left(e)
+
+      extension [A](fa: Either[E, A])
+        override def map[B](f: A => B): Either[E, B] =
+          fa.flatMap(a => pure(f(a)))
+
+      extension [A, B](ff: Either[E, A => B])
+        override def ap(fa: Either[E, A]): Either[E, B] =
+          ff.flatMap(f => fa.map(a => f(a)))
+
+  given listMonad: Monad[List] =
+    new Monad[List]:
+      override def pure[A](a: A): List[A] = List(a)
+
+      extension [A](fa: List[A])
+        override def flatMap[B](f: A => List[B]): List[B] =
+          fa match
+            case h :: t => f(h) ++ t.flatMap(f)
+            case Nil => Nil
+
+      extension [A](fa: List[A])
+        override def map[B](f: A => B): List[B] =
+          fa.flatMap(a => pure(f(a)))
+
+      extension [A, B](ff: List[A => B])
+        override def ap(fa: List[A]): List[B] =
+          ff.flatMap(f => fa.map(a => f(a)))
+end Exercise01
