@@ -1,7 +1,5 @@
 package advfp.ch03statereaderwriterandvalidated
 
-import advfp.core.unsolved
-
 /** Exercise 04 — Show that `Validated` cannot be a monad.
   *
   * A monad's `ap` must agree with its `flatMap`:
@@ -31,6 +29,8 @@ object Exercise04:
     case Valid(value: A)
     case Invalid(errors: E)
 
+  import Validated.*
+
   /** A validation whose errors are messages. */
   type Checked[A] = Validated[NonEmptyList[String], A]
 
@@ -38,11 +38,30 @@ object Exercise04:
 
   def invalid[A](error: String): Checked[A] = Validated.Invalid(NonEmptyList.of(error))
 
-  given validatedApplicative: [E: Semigroup] => Applicative[[A] =>> Validated[E, A]] = unsolved
+  given validatedApplicative: [E: Semigroup] => Applicative[[A] =>> Validated[E, A]] =
+    new Applicative[[A] =>> Validated[E, A]]:
+
+      override def pure[A](a: A): Validated[E, A] = Valid(a)
+
+      extension [A](fa: Validated[E, A])
+        override def map[B](f: A => B): Validated[E, B] =
+          fa match
+            case Valid(a) => Valid(f(a))
+            case Invalid(e) => Invalid(e)
+
+      extension [A, B](ff: Validated[E, A => B])
+        override def ap(fa: Validated[E, A]): Validated[E, B] =
+          (ff, fa) match
+            case (Valid(f), Valid(a)) => Valid(f(a))
+            case (Valid(_), Invalid(e)) => Invalid(e)
+            case (Invalid(e), Valid(_)) => Invalid(e)
+            case (Invalid(e1), Invalid(e2)) => Invalid(e1 |+| e2)
 
   extension [E, A](fa: Validated[E, A])
     def flatMap[B](f: A => Validated[E, B]): Validated[E, B] =
-      unsolved
+      fa match
+        case Valid(a) => f(a)
+        case Invalid(e) => Invalid(e)
 
   /** The `ap` a monad built on this `flatMap` would have to have — the
     * agreement law read as a definition. Given, not yours.
@@ -50,5 +69,9 @@ object Exercise04:
   def apFromFlatMap[A, B](ff: Checked[A => B])(fa: Checked[A]): Checked[B] =
     ff.flatMap(f => fa.map(f))
 
-  def counterexample: (Checked[Int => Int], Checked[Int]) = unsolved
+  def counterexample: (Checked[Int => Int], Checked[Int]) =
+    (
+      Invalid(NonEmptyList.of("first error")),
+      Invalid(NonEmptyList.of("second error"))
+    )
 end Exercise04

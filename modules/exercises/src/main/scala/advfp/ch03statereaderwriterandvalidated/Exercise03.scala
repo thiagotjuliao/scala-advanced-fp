@@ -1,7 +1,5 @@
 package advfp.ch03statereaderwriterandvalidated
 
-import advfp.core.unsolved
-
 /** Exercise 03 — Validate a form and report every error at once.
   *
   * `Validated[E, A]` is either a `Valid` value or the `Invalid` errors that
@@ -32,6 +30,8 @@ object Exercise03:
     case Valid(value: A)
     case Invalid(errors: E)
 
+  import Validated.*
+
   /** A validation whose errors are messages. */
   type Checked[A] = Validated[NonEmptyList[String], A]
 
@@ -42,15 +42,50 @@ object Exercise03:
 
   def invalid[A](error: String): Checked[A] = Validated.Invalid(NonEmptyList.of(error))
 
-  given validatedApplicative: [E: Semigroup] => Applicative[[A] =>> Validated[E, A]] = unsolved
+  given validatedApplicative: [E: Semigroup] => Applicative[[A] =>> Validated[E, A]] =
+    new Applicative[[A] =>> Validated[E, A]]:
+
+      override def pure[A](a: A): Validated[E, A] = Valid(a)
+
+      extension [A](fa: Validated[E, A])
+        override def map[B](f: A => B): Validated[E, B] =
+          fa match
+            case Valid(a) => Valid(f(a))
+            case Invalid(e) => Invalid(e)
+
+      extension [A, B](ff: Validated[E, A => B])
+        override def ap(fa: Validated[E, A]): Validated[E, B] =
+          (ff, fa) match
+            case (Valid(f), Valid(a)) => Valid(f(a))
+            case (Valid(_), Invalid(e)) => Invalid(e)
+            case (Invalid(e), Valid(_)) => Invalid(e)
+            case (Invalid(e1), Invalid(e2)) => Invalid(e1 |+| e2)
 
   final case class Signup(name: String, age: Int, email: String)
 
-  def validateName(raw: String): Checked[String] = unsolved
+  def validateName(raw: String): Checked[String] =
+    raw.trim() match
+      case "" => Invalid(NonEmptyList.of("name is empty"))
+      case s => Valid(s)
 
-  def validateAge(raw: String): Checked[Int] = unsolved
+  def validateAge(raw: String): Checked[Int] =
+    raw.trim().toIntOption match
+      case Some(age) if age < 18 =>
+        Invalid(NonEmptyList.of("age must be at least 18"))
+      case Some(age) => Valid(age)
+      case None => Invalid(NonEmptyList.of("age is not a number"))
 
-  def validateEmail(raw: String): Checked[String] = unsolved
+  def validateEmail(raw: String): Checked[String] =
+    raw.trim().find(_ == '@') match
+      case Some(_) => Valid(raw)
+      case None => Invalid(NonEmptyList.of("email has no @"))
 
-  def validateSignup(name: String, age: String, email: String): Checked[Signup] = unsolved
+  def validateSignup(name: String, age: String, email: String): Checked[Signup] =
+    val ff: Checked[String => Int => String => Signup] =
+      valid(Signup.apply.curried)
+
+    ff.ap(validateName(name))
+      .ap(validateAge(age))
+      .ap(validateEmail(email))
+
 end Exercise03
