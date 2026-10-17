@@ -1,7 +1,5 @@
 package advfp.ch02applicativemonadandtraverse
 
-import advfp.core.unsolved
-
 /** Exercise 02 — Derive the combinators from the primitives.
   *
   * `Applicative` only has `pure` and `ap`. Everything else people call
@@ -47,12 +45,21 @@ object Exercise02:
         Logged(fa.log ++ next.log, next.value)
 
   extension [F[_]: Applicative, A](fa: F[A])
-    def map2[B, C](fb: F[B])(f: (A, B) => C): F[C] = unsolved
+    def map2[B, C](fb: F[B])(f: (A, B) => C): F[C] =
+      val app = Applicative[F]
+      val ff = app.pure(f.curried)
+      app.ap(app.ap(ff)(fa))(fb)
 
-    def product[B](fb: F[B]): F[(A, B)] = unsolved
+    def product[B](fb: F[B]): F[(A, B)] =
+      fa.map2(fb)((a, b) => (a, b))
 
   extension [F[_]: Applicative, A, B, C](fs: (F[A], F[B], F[C]))
-    def mapN[D](f: (A, B, C) => D): F[D] = unsolved
+    def mapN[D](f: (A, B, C) => D): F[D] =
+      val app = Applicative[F]
+      val (fa, fb, fc) = fs
+      val g: (A, B) => C => D = (a, b) => c => f(a, b, c)
+      app.ap(fa.map2(fb)(g))(fc)
 
-  def apFromFlatMap[F[_]: Monad, A, B](ff: F[A => B])(fa: F[A]): F[B] = unsolved
+  def apFromFlatMap[F[_]: Monad, A, B](ff: F[A => B])(fa: F[A]): F[B] =
+    ff.flatMap(f => fa.map(a => f(a)))
 end Exercise02
