@@ -1,7 +1,5 @@
 package advfp.ch04evalandtrampolining
 
-import advfp.core.unsolved
-
 /** Exercise 01 — Write a trampoline, and run a deep mutual recursion on it.
   *
   * A `Trampoline[A]` describes a computation of an `A` as data, one step at a
@@ -34,11 +32,45 @@ object Exercise01:
     case More(next: () => Trampoline[A])
     case FlatMap[X, +A](source: Trampoline[X], f: X => Trampoline[A]) extends Trampoline[A]
 
-  extension [A](t: Trampoline[A]) def run: A = unsolved
+  import Trampoline.*
 
-  given trampolineMonad: Monad[Trampoline] = unsolved
+  extension [A](t: Trampoline[A])
+    @annotation.tailrec
+    def run: A =
+      t match
+        case Done(a) => a
+        case More(next) => next().run
+        case FlatMap(source, f) =>
+          source match
+            case Done(a) => f(a).run
+            case More(next) => FlatMap(next(), f).run
+            case FlatMap(source2, g) =>
+              FlatMap(source2, x2 => FlatMap(g(x2), f)).run
 
-  def isEven(n: Int): Trampoline[Boolean] = unsolved
+  given trampolineMonad: Monad[Trampoline] =
+    new Monad[Trampoline]:
+      override def pure[A](a: A): Trampoline[A] = Done(a)
 
-  def isOdd(n: Int): Trampoline[Boolean] = unsolved
+      extension [A](fa: Trampoline[A])
+        override def flatMap[B](f: A => Trampoline[B]): Trampoline[B] =
+          FlatMap(fa, f)
+
+      extension [A](fa: Trampoline[A])
+        override def map[B](f: A => B): Trampoline[B] =
+          fa.flatMap(a => pure(f(a)))
+
+      extension [A, B](ff: Trampoline[A => B])
+        override def ap(fa: Trampoline[A]): Trampoline[B] =
+          ff.flatMap(f => fa.map(f))
+
+  def isEven(n: Int): Trampoline[Boolean] =
+    require(n >= 0, "n must be non-negative")
+    if n == 0 then Done(true)
+    else More(() => isOdd(n - 1))
+
+  def isOdd(n: Int): Trampoline[Boolean] =
+    require(n >= 0, "n must be non-negative")
+    if n == 0 then Done(false)
+    else More(() => isEven(n - 1))
+
 end Exercise01

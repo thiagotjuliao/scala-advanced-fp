@@ -1,7 +1,5 @@
 package advfp.ch04evalandtrampolining
 
-import advfp.core.unsolved
-
 /** Exercise 03 — Fold a long list from the right, lazily.
   *
   * The `Eval` used here is the one in `Eval.scala`: given, complete, and
@@ -21,7 +19,17 @@ import advfp.core.unsolved
   */
 object Exercise03:
 
-  def foldRight[A, B](as: List[A], z: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] = unsolved
+  /** foldRightRec
+    * Nil => z
+    * h :: t => f(h, foldRight(t, z)(f))
+    */
+  def foldRight[A, B](as: List[A], z: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] =
+    as match
+      case Nil => z
+      case h :: t => f(h, Eval.defer(foldRight(t, z)(f)))
 
-  def exists[A](as: List[A])(p: A => Boolean): Eval[Boolean] = unsolved
+  def exists[A](as: List[A])(p: A => Boolean): Eval[Boolean] =
+    foldRight(as, Eval.now(false)): (a, acc) =>
+      if p(a) then Eval.now(true) else acc
+
 end Exercise03

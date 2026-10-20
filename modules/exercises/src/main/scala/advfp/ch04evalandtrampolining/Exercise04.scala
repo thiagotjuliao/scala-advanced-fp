@@ -1,7 +1,5 @@
 package advfp.ch04evalandtrampolining
 
-import advfp.core.unsolved
-
 /** Exercise 04 — Make `State` stack-safe by running it on `Eval`.
   *
   * Chapter 03's `State[S, A]` was `S => (S, A)`, and a loop of ten thousand
@@ -26,13 +24,27 @@ object Exercise04:
   final case class State[S, A](run: S => Eval[(S, A)])
 
   object State:
-    def get[S]: State[S, S] = unsolved
+    def get[S]: State[S, S] = State(s => Eval.now((s, s)))
 
-    def set[S](s: S): State[S, Unit] = unsolved
+    def set[S](s: S): State[S, Unit] = State(_ => Eval.now((s, ())))
 
-    def modify[S](f: S => S): State[S, Unit] = unsolved
+    def modify[S](f: S => S): State[S, Unit] = State(s => Eval.now(f(s), ()))
 
-  given stateMonad: [S] => Monad[[A] =>> State[S, A]] = unsolved
+  given stateMonad: [S] => Monad[[A] =>> State[S, A]] =
+    new Monad[[A] =>> State[S, A]]:
+      override def pure[A](a: A): State[S, A] = State(s => Eval.now(s, a))
 
-  def forEach[S, A](as: List[A])(f: A => State[S, Unit]): State[S, Unit] = unsolved
+      extension [A](fa: State[S, A])
+        override def flatMap[B](f: A => State[S, B]): State[S, B] =
+          State(s => Eval.defer(fa.run(s)).flatMap((s, a) => f(a).run(s)))
+
+  def forEach[S, A](as: List[A])(f: A => State[S, Unit]): State[S, Unit] =
+    // State: s =>
+    //   as.foldLeft(Eval.now((s, ()))): (acc, a) =>
+    //     acc.flatMap: (s, _) =>
+    //       f(a).run(s)
+    as match
+      case Nil => stateMonad.pure(())
+      case h :: t => f(h).flatMap(_ => forEach(t)(f))
+
 end Exercise04

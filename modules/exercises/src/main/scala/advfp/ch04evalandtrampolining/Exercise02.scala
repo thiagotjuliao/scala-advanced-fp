@@ -1,7 +1,5 @@
 package advfp.ch04evalandtrampolining
 
-import advfp.core.unsolved
-
 /** Exercise 02 — Write `Eval`: strict, lazy and memoized values, stack-safe
   * to compose.
   *
@@ -29,20 +27,56 @@ import advfp.core.unsolved
 object Exercise02:
 
   sealed abstract class Eval[+A]:
-    def value: A = unsolved
+    final def value: A = Eval.run(this)
 
-    def flatMap[B](f: A => Eval[B]): Eval[B] = unsolved
+    def flatMap[B](f: A => Eval[B]): Eval[B] = FlatMap(this, f)
 
-    def map[B](f: A => B): Eval[B] = unsolved
+    def map[B](f: A => B): Eval[B] =
+      val g: A => Eval[B] = a => Eval.now(f(a))
+      this.flatMap(g)
+
+  sealed abstract class Leaf[+A] extends Eval[A]:
+    def get: A
+
+  final case class Now[+A](override val get: A) extends Leaf[A]
+
+  final case class Later[+A](thunk: () => A) extends Leaf[A]:
+    override lazy val get: A = thunk()
+
+  final case class Always[+A](thunk: () => A) extends Leaf[A]:
+    override def get: A = thunk()
+
+  final case class Defer[+A](eval: () => Eval[A]) extends Eval[A]
+
+  final case class FlatMap[X, +A](source: Eval[X], f: X => Eval[A]) extends Eval[A]
 
   object Eval:
-    def now[A](a: A): Eval[A] = unsolved
+    def now[A](a: A): Eval[A] = Now(a)
 
-    def later[A](a: => A): Eval[A] = unsolved
+    def later[A](a: => A): Eval[A] = Later(() => a)
 
-    def always[A](a: => A): Eval[A] = unsolved
+    def always[A](a: => A): Eval[A] = Always(() => a)
 
-    def defer[A](eval: => Eval[A]): Eval[A] = unsolved
+    def defer[A](eval: => Eval[A]): Eval[A] = Defer(() => eval)
 
-  given evalMonad: Monad[Eval] = unsolved
+    private def step[X, A](source: Eval[X], f: X => Eval[A]): Eval[A] =
+      source match
+        case l: Leaf[X] => f(l.get)
+        case d: Defer[?] => FlatMap(d.eval(), f)
+        case FlatMap(source2, g) =>
+          FlatMap(source2, x2 => FlatMap(g(x2), f))
+
+    @annotation.tailrec
+    private def run[A](eval: Eval[A]): A = eval match
+      case l: Leaf[A] => l.get
+      case d: Defer[?] => run(d.eval())
+      case FlatMap(source, f) => run(step(source, f))
+
+  given evalMonad: Monad[Eval] =
+    new Monad[Eval]:
+      override def pure[A](a: A): Eval[A] = Now(a)
+
+      extension [A](fa: Eval[A])
+        override def flatMap[B](f: A => Eval[B]): Eval[B] =
+          FlatMap(fa, f)
 end Exercise02
