@@ -126,7 +126,10 @@ function Invoke-StagedVerification {
     #
     # munit colours its stack traces, and a colour code in front of `at` hides
     # the frame from the filter — so the colours go first.
-    sbt -batch verify 2>&1 |
+    # `--server` runs sbt in the foreground instead of through the thin client,
+    # which under sbt 2 starts a server in the background that outlives the
+    # script — an orphan left in the scratch directory, holding memory.
+    sbt --server -batch verify 2>&1 |
       ForEach-Object { "$_" -replace "`e\[[0-9;]*m", '' } |
       Where-Object { $_ -notmatch '^\s+at [A-Za-z_$][A-Za-z0-9_.$]*[.(]' -and $_ -notmatch 'sbt server disconnected' } |
       Out-Host

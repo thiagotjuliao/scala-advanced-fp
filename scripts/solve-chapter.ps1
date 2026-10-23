@@ -75,11 +75,15 @@ function Invoke-StagedVerification {
   Write-Host "  sbt ""scalafmtCheckAll; exercises/testOnly $suite"" ..."
   Push-Location $verifyDir
   try {
-    # One argument, the commands joined by `;`: under sbt 2 the launcher runs
-    # the thin client, which joins separate arguments into a single command
-    # line (`scalafmtCheckAll exercises/testOnly ...`, rejected with
-    # `Expected '/'`).
-    $out = @(sbt -batch "scalafmtCheckAll; exercises/testOnly $suite" 2>&1 |
+    # One argument, the commands joined by `;`: the thin client joins separate
+    # arguments into a single command line (`scalafmtCheckAll
+    # exercises/testOnly ...`, rejected with `Expected '/'`), and one argument
+    # works with or without it.
+    #
+    # `--server` runs sbt in the foreground instead of through the thin client,
+    # which under sbt 2 starts a server in the background that outlives the
+    # script — an orphan left in the scratch directory, holding memory.
+    $out = @(sbt --server -batch "scalafmtCheckAll; exercises/testOnly $suite" 2>&1 |
       # munit colours its stack traces, and a colour code in front of `at`
       # hides the frame from the filter below — so the colours go first.
       ForEach-Object { "$_" -replace "`e\[[0-9;]*m", '' } |

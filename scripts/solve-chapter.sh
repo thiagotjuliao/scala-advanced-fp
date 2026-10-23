@@ -78,12 +78,16 @@ verify_staged_tree() {
 
   echo "  sbt \"scalafmtCheckAll; exercises/testOnly $SUITE\" ..."
   set +e
-  # One argument, the commands joined by `;`: under sbt 2 the launcher runs the
-  # thin client, which joins separate arguments into a single command line
-  # (`scalafmtCheckAll exercises/testOnly ...`, rejected with `Expected '/'`).
+  # One argument, the commands joined by `;`: the thin client joins separate
+  # arguments into a single command line (`scalafmtCheckAll exercises/testOnly
+  # ...`, rejected with `Expected '/'`), and one argument works with or without it.
+  #
+  # `--server` runs sbt in the foreground instead of through the thin client,
+  # which under sbt 2 starts a server in the background that outlives the
+  # script — an orphan left in the scratch directory, holding memory.
   out="$(
     cd "$VERIFY_DIR" &&
-      sbt -batch "scalafmtCheckAll; exercises/testOnly $SUITE" 2>&1 |
+      sbt --server -batch "scalafmtCheckAll; exercises/testOnly $SUITE" 2>&1 |
       sed -e "s/$esc\[[0-9;]*m//g" \
           -e '/[[:space:]]at [A-Za-z_$][A-Za-z0-9_.$]*[.(]/d' \
           -e '/sbt server disconnected/d'
