@@ -1,7 +1,5 @@
 package advfp.ch05ioasadescription
 
-import advfp.core.unsolved
-
 /** Exercise 02 — Write `attempt`, `rethrow`, `handleError` and `guarantee` on
   * `IO`'s primitives.
   *
@@ -29,11 +27,20 @@ import advfp.core.unsolved
 object Exercise02:
 
   extension [A](io: IO[A])
-    def attempt: IO[Either[Throwable, A]] = unsolved
+    def attempt: IO[Either[Throwable, A]] =
+      io.map(Right(_)).handleErrorWith(e => IO.pure(Left(e)))
 
-    def handleError[B >: A](f: Throwable => B): IO[B] = unsolved
+    def handleError[B >: A](f: Throwable => B): IO[B] =
+      io.handleErrorWith(e => IO.delay(f(e)))
 
-    def guarantee(finalizer: IO[Unit]): IO[A] = unsolved
+    def guarantee(finalizer: IO[Unit]): IO[A] =
+      io.attempt.flatMap:
+        case Left(e) => finalizer.attempt.flatMap(_ => IO.raiseError(e))
+        case Right(a) => finalizer.flatMap(_ => IO.pure(a))
 
-  extension [A](io: IO[Either[Throwable, A]]) def rethrow: IO[A] = unsolved
+  extension [A](io: IO[Either[Throwable, A]])
+    def rethrow: IO[A] =
+      io.flatMap:
+        case Left(e) => IO.raiseError(e)
+        case Right(a) => IO.pure(a)
 end Exercise02
