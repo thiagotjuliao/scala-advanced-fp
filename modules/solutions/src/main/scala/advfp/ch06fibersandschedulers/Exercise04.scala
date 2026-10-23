@@ -13,9 +13,9 @@ import scala.concurrent.duration.FiniteDuration
   * The answer is the same in every case: cancel it, and wait until it has
   * stopped — `cancel` waits — before producing anything. A race that only
   * returns the winner has stopped *waiting* for the loser, and the loser goes
-  * on doing whatever it would have done: the spec's loser writes "too late"
-  * a hundred milliseconds after the race has ended. Measured 2026-10-23: that
-  * version fails four of the ten tests under each scheduler.
+  * on doing whatever it would have done: the spec's loser, let go once the
+  * race has ended, writes "too late". Measured 2026-10-23: that version fails
+  * four of the ten tests under each scheduler.
   *
   * A winner that failed is still a winner. The race fails with its error, after
   * canceling the loser like any other time: an error is an outcome, and
