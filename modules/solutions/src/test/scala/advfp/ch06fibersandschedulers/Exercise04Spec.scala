@@ -3,7 +3,7 @@ package advfp.ch06fibersandschedulers
 import advfp.core.CourseSuite
 
 import java.util.concurrent.TimeoutException
-import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReference}
 
 import scala.concurrent.duration.*
 
@@ -45,6 +45,30 @@ class Exercise04Spec extends CourseSuite:
 
     def read: Vector[String] = lines.get
 
+  // A program that waits until the test lets it go, and then writes "too
+  // late". The test lets it go only after the race has ended, so no timing is
+  // involved: a loser that was canceled has ended, its suspension claimed or
+  // never reached, and the release does nothing; a loser still alive is
+  // resumed by it — whether it suspended before the release or after — and
+  // writes. A version with two sleeps of different lengths failed a correct
+  // answer when a GC pause made both timers fire at once.
+  private final class Held(log: Log):
+    private val released = AtomicBoolean(false)
+    private val waiting = AtomicReference[Option[Either[Throwable, Unit] => Unit]](None)
+
+    val program: IO[Unit] =
+      IO.async[Unit] { callback =>
+        waiting.set(Some(callback))
+        if released.get then callback(Right(()))
+      }.flatMap(_ => log.write("too late"))
+
+    // The release first, then the callback: `program` does the same two in the
+    // other order, so one of them always calls back. `async` ignores a second
+    // call.
+    def letGo(): Unit =
+      released.set(true)
+      waiting.get.foreach(_(Right(())))
+
   for (name, scheduler) <- schedulers do
     def run[A](io: IO[A]): Outcome[A] = io.unsafeRun(scheduler)
 
@@ -71,9 +95,10 @@ class Exercise04Spec extends CourseSuite:
 
     test(s"$name: the loser's later effects never happen") {
       val log = Log()
-      val loser = IO.sleep(100.millis).flatMap(_ => log.write("too late"))
-      assertEquals(run(race(IO.pure(1), loser)), Outcome.Succeeded(Left(1)))
-      Thread.sleep(300)
+      val loser = Held(log)
+      assertEquals(run(race(IO.pure(1), loser.program)), Outcome.Succeeded(Left(1)))
+      loser.letGo()
+      Thread.sleep(100) // time for a loser that was not stopped to write
       assertEquals(log.read, Vector.empty)
     }
 
@@ -111,11 +136,12 @@ class Exercise04Spec extends CourseSuite:
 
     test(s"$name: a program that runs too long is stopped") {
       val log = Log()
-      val slow = IO.sleep(200.millis).flatMap(_ => log.write("too late"))
-      run(slow.timeout(20.millis)) match
+      val slow = Held(log)
+      run(slow.program.timeout(20.millis)) match
         case Outcome.Errored(_: TimeoutException) => ()
         case other => fail(s"expected Errored(TimeoutException), got $other")
-      Thread.sleep(400)
+      slow.letGo()
+      Thread.sleep(100) // time for a program that was not stopped to write
       assertEquals(log.read, Vector.empty)
     }
   end for

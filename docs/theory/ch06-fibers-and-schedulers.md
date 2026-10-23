@@ -366,7 +366,7 @@ after the other. Measured 2026-10-23: exercise 03's meeting test gets
 loser goes on running after the race has returned, and nobody holds its
 handle any more. Measured 2026-10-23: a `race` that returns the winner
 without canceling fails four of exercise 04's ten tests under each scheduler —
-the loser's counter keeps climbing, and the effect it was sleeping towards,
+the loser's counter keeps climbing, and the effect it was waiting to perform,
 "too late", is written after the race has ended.
 
 **A fiber left running by a wrong answer keeps running inside sbt.** Tests run
