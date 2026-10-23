@@ -121,6 +121,16 @@ class Exercise01Spec extends CourseSuite:
     assertEquals(RaiseError(boom).handleErrorWith(_ => throw other).unsafeRun(), Left(other))
   }
 
+  test("a handler catches an exception thrown inside its program") {
+    // A thunk that throws as the first step under a handler: a loop that pops
+    // the handler before running the thunk lets the error past it.
+    assertEquals(Delay(() => throw boom).handleErrorWith(_ => Pure(0)).unsafeRun(), Right(0))
+    assertEquals(
+      Pure(1).flatMap(_ => throw boom).handleErrorWith(_ => Pure(0)).unsafeRun(),
+      Right(0)
+    )
+  }
+
   test("a program can be run twice, and does its effects twice") {
     val calls = counter()
     val io = tick(calls).flatMap(_ => RaiseError(boom)).handleErrorWith(_ => tick(calls))
