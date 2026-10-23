@@ -1,6 +1,6 @@
 package advfp.ch05ioasadescription
 
-import advfp.core.unsolved
+import scala.util.control.NonFatal
 
 /** Exercise 01 — Write the run loop of `IO`: stack-safe, and with errors.
   *
@@ -51,12 +51,61 @@ object Exercise01:
     case FlatMap[X, +A](source: IO[X], f: X => IO[A]) extends IO[A]
     case HandleErrorWith(source: IO[A], handler: Throwable => IO[A])
 
+  import IO.*
+
   extension [A](io: IO[A])
-    def flatMap[B](f: A => IO[B]): IO[B] = unsolved
+    def flatMap[B](f: A => IO[B]): IO[B] = FlatMap(io, f)
 
-    def map[B](f: A => B): IO[B] = unsolved
+    def map[B](f: A => B): IO[B] =
+      val g: A => IO[B] = a => Delay(() => f(a))
+      FlatMap(io, g)
 
-    def handleErrorWith[B >: A](handler: Throwable => IO[B]): IO[B] = unsolved
+    def handleErrorWith[B >: A](handler: Throwable => IO[B]): IO[B] =
+      HandleErrorWith(io, handler)
 
-    def unsafeRun(): Either[Throwable, A] = unsolved
+    def unsafeRun(): Either[Throwable, A] =
+      type StepFunction = Either[Throwable, Any] => IO[Any]
+
+      def guard(io: => IO[Any]): IO[Any] =
+        try io
+        catch case NonFatal(e) => RaiseError(e)
+
+      @annotation.tailrec
+      def loop(source: IO[Any], stack: List[StepFunction]): Either[Throwable, Any] =
+        source match
+          case Pure(a) =>
+            stack match
+              case Nil => Right(a)
+              case sf :: t => loop(guard(sf(Right(a))), t)
+
+          case FlatMap(current, f) =>
+            // `f` takes the hidden `X`, and `X => IO[A]` is not an
+            // `Any => IO[Any]`: a function's input is contravariant. The cast is
+            // safe because this frame is only ever popped with the value
+            // `current` produces, which is an `X`.
+            val g: StepFunction =
+              case Right(a) => f.asInstanceOf[Any => IO[Any]](a)
+              case Left(e) => RaiseError(e)
+            loop(current, g :: stack)
+
+          case RaiseError(e) =>
+            stack match
+              case Nil => Left(e)
+              case sf :: t => loop(guard(sf(Left(e))), t)
+
+          case Delay(thunk) =>
+            loop(guard(Pure(thunk())), stack)
+
+          case HandleErrorWith(current, h) =>
+            val g: StepFunction =
+              case Right(a) => Pure(a)
+              case Left(e) => h(e)
+            loop(current, g :: stack)
+
+      // The loop runs `IO`s of every intermediate type, so it works on `Any`.
+      // What leaves it with an empty stack is the value of the whole program,
+      // `io`, which is an `A`.
+      loop(io, List()).asInstanceOf[Either[Throwable, A]]
+    end unsafeRun
+  end extension
 end Exercise01
