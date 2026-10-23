@@ -95,6 +95,212 @@ running. `race` decides what that means: the winner's value, or its error —
 and in every case the loser is canceled before `race` returns, so nothing it
 does is left running. `timeout` is a race against `IO.sleep`.
 
+## Inside the runtime
+
+The previous section says what the runtime in `IO.scala` promises. This one
+says how it keeps those promises, and why that is right. It is written to be
+consulted, while reading `IO.scala` now and again in milestone 2, which builds
+the same runtime from an empty module. Every claim below about a race is
+checked by
+[`RuntimeSpec.scala`](../../modules/solutions/src/test/scala/advfp/ch06fibersandschedulers/RuntimeSpec.scala),
+which forces both orders of each race a couple of thousand times, on both
+schedulers.
+
+### What a fiber holds
+
+A fiber is chapter 05's loop plus three atomic variables. The loop's own
+state — the `IO` it is running and its stack — is not shared: only the thread
+running the loop touches it.
+
+| variable | holds | written by | read by |
+| --- | --- | --- | --- |
+| `canceled` | `AtomicBoolean` | `requestCancel`, once, to `true` | the loop at every cancellation point, and `suspend` |
+| `suspension` | `Option[AtomicBoolean]`: the token of the suspension the loop is waiting in | `suspend` (sets it), the callback (clears it) | `requestCancel` |
+| `state` | `Running(waiters)` or `Ended(outcome)` | `onComplete` (adds a waiter), `complete` (ends the fiber) | `onComplete`, `complete` |
+
+When the loop moves to another thread — a callback resumes it with
+`scheduler.execute(() => loop(next, stack))` — the stack travels inside that
+closure. Handing a task to an executor publishes everything written before it:
+the `java.util.concurrent` package documentation lists, among its *memory
+consistency properties*, that actions in a thread before it submits a
+`Runnable` to an `Executor` *happen-before* that `Runnable` starts. So the new
+thread sees the stack exactly as the old one left it, and nothing else is
+needed.
+
+### The three invariants
+
+Everything rests on three facts.
+
+1. **A fiber ends exactly once.** `complete` runs once, so every waiter is
+   told once, and the outcome never changes after it is set.
+2. **A suspension ends exactly once.** Either its callback resumes the loop,
+   or a cancel ends the fiber in its place — never both, and never twice.
+3. **A cancel is never lost.** Once `canceled` is `true`, a running fiber
+   stops at its next cancellation point, and a suspended one is ended by the
+   cancel itself.
+
+Invariant 2 is what makes invariant 1 hold. A fiber can be ended in two
+ways. Its running loop ends it when the stack empties or a cancellation point
+sees the flag. Otherwise it is ended by claiming the token of a pending
+suspension: `requestCancel` does that, and so does `suspend` itself when it
+finds the flag already set. The loop only runs while no suspension is pending,
+and a pending suspension's token is claimed once. So no two of them can both
+end the fiber.
+
+### The life of a fiber
+
+```mermaid
+stateDiagram-v2
+    [*] --> Running: begin() hands the loop to the scheduler
+    Running --> Running: one step (push a frame, run a thunk, apply a function)
+    Running --> Suspended: Async, and the loop returns its thread
+    Suspended --> Running: the callback claims the suspension and hands the loop back to the scheduler
+    Suspended --> Ended: requestCancel claims the suspension, and the fiber is Canceled
+    Running --> Ended: the stack is empty, so Succeeded or Errored
+    Running --> Ended: a cancellation point sees the flag, so Canceled
+    Ended --> [*]
+```
+
+A fiber spends its life alternating between *Running* (on some thread,
+taking steps) and *Suspended* (on no thread at all). Each pass through
+*Suspended* creates a new token, and leaving it means claiming that token.
+
+### One program, traced
+
+```scala
+for
+  _     <- where("1")                          // prints the thread it ran on
+  child <- where("2").map(_ => 2).start
+  _     <- where("3")
+  _     <- IO.sleep(20.millis)
+  _     <- where("4")
+  o     <- child.join
+  _     <- where("5")
+yield o
+```
+
+Run on `Scheduler.pool(2)` (measured 2026-10-23), it printed steps 1 and 3 on
+`pool-0`, step 2 on `pool-1`, and steps 4 and 5 on `pool-1`. The root fiber
+started on one thread and finished on the other. Here is what happened:
+
+| # | thread | what the runtime did | afterwards |
+| --- | --- | --- | --- |
+| 1 | `main` | `unsafeRun` registers a latch as the root fiber's first waiter, hands the loop to the pool, and blocks on the latch | root `Running([latch])` |
+| 2 | `pool-0` | root: runs step 1; meets `Start`, creates the child fiber, hands its loop to the pool, and goes on at once with `Pure(child)` | child queued |
+| 3 | `pool-1` | child: runs step 2, its stack empties, `complete(Succeeded(2))`: no one is waiting yet | child `Ended(Succeeded(2))` |
+| 4 | `pool-0` | root: runs step 3; meets `IO.sleep`'s `Async`: creates token *t*, sets `suspension = Some(t)`, reads `canceled` (false), schedules the timer, and returns | root *Suspended*, `pool-0` free |
+| 5 | `io-timer` | 20 ms later the callback claims *t*, clears `suspension`, and hands `loop(Pure(()), stack)` to the pool | root *Running*, queued |
+| 6 | `pool-1` | root: runs step 4; meets `join`'s `Async`: suspends, and `register` calls `onComplete`, which finds the child `Ended` and calls back at once; the callback claims the new token and hands the loop to the pool again | root queued |
+| 7 | `pool-1` | root: runs step 5, its stack empties, `complete(Succeeded(Succeeded(2)))`, which tells the latch | root `Ended` |
+| 8 | `main` | the latch opens and `unsafeRun` returns `Succeeded(Succeeded(2))` | |
+
+Steps 2 and 3 run on two threads at once, so their output can come in
+either order. Step 6 shows a detail worth knowing: joining a fiber that has
+already ended still suspends and resumes, so the joiner passes through the
+scheduler once even though it never waits.
+
+### The races, and how each is settled
+
+Four races can happen, and each is settled by one atomic operation.
+
+**A cancel against a fiber going into a suspension.** The loop is about to
+suspend at the moment another fiber cancels it. Each side writes its own
+variable and then reads the other's:
+
+```mermaid
+sequenceDiagram
+    participant L as loop, in suspend
+    participant V as canceled, suspension
+    participant C as requestCancel
+    L->>V: suspension = Some(t)
+    C->>V: canceled = true
+    L->>V: read canceled
+    C->>V: read suspension
+    Note over L,C: at least one of the two reads sees the other side's write.<br/>Whoever sees it tries to claim t, and the claim succeeds once.
+```
+
+That *at least one sees the other* is a fact about the Java memory model, not
+luck. An atomic's `get` and `set` behave as volatile reads and writes (the
+`java.util.concurrent.atomic` package documentation), and volatile accesses
+fall into one *synchronization order* that is total and agrees with each
+thread's program order (JLS §17.4.4). Suppose the loop read `canceled` as
+`false`. Then that read comes before the cancel's write in the total order.
+The loop's write of `suspension` comes before its own read, so it comes
+before the cancel's write too, and therefore before the cancel's read: the
+cancel sees `Some(t)`. The same argument works the other way round. Both
+reads may also see the other side, and then the claim on *t* decides who ends
+the fiber.
+
+Get the order wrong, or skip the loop's second read, and both sides can miss
+each other. The fiber then sits in `IO.never` with no one left to end it, and
+the cancel, which waits for the fiber, waits forever. Measured 2026-10-23:
+a `requestCancel` that reads `suspension` before setting the flag, and a
+`suspend` that does not re-read the flag, each fail the spec's
+cancel-into-suspension race on both schedulers, by timeout; the reversed
+order failed in three runs of three.
+
+**A callback against a cancel, on a fiber already suspended.** Both want to
+end the same suspension, and both try `compareAndSet(false, true)` on its
+token:
+
+```mermaid
+sequenceDiagram
+    participant R as callback
+    participant T as token t
+    participant C as requestCancel
+    par at the same moment
+        R->>T: compareAndSet(false, true)
+    and
+        C->>T: compareAndSet(false, true)
+    end
+    alt the callback wins
+        T-->>R: true, so the loop resumes and stops at its next cancellation point
+        T-->>C: false, so the cancel waits for the fiber to end
+    else the cancel wins
+        T-->>C: true, so complete(Canceled)
+        T-->>R: false, so the value is dropped
+    end
+```
+
+Both endings are correct, and both happen. Over 2,000 forced rounds the
+callback won 166 times on `pool(4)` and 344 times on virtual threads, and the
+cancel won the rest. Measured 2026-10-23: a callback that claims with a plain
+`set` instead of `compareAndSet` fails ten of the spec's sixteen tests. A cancel
+that *checks* the token and then sets it was caught in only four runs out of
+five, and only on virtual threads: the window between its read and its write
+is a few instructions wide. A race test that passes is evidence, not proof;
+the `compareAndSet` is what makes the protocol right.
+
+**A join against the end of the fiber.** `onComplete` adds a waiter with
+`compareAndSet` on `state`, and `complete` swaps in `Ended` with `getAndSet`.
+A join either lands in `Running`'s list before the swap, and then `complete`
+calls it, or it sees `Ended` and calls itself back. Either way it is told
+exactly once. A plain `set` in `onComplete` loses updates: two joiners read
+the same list, and the second write drops the first joiner, who then waits for
+good. Measured 2026-10-23: eight of the spec's sixteen tests fail, in two
+runs of two.
+
+**Two fibers ending at once in `racePair`.** Both call the racer's callback.
+`async` keeps the first call — it is a claim on the racer's own token, as in
+the second race above — and ignores the second. Over 2,000 forced rounds each
+side won some (on `pool(4)`, 44 against 1,956; on virtual threads, 411
+against 1,589), and the race decided once every time.
+
+### What it deliberately does not do
+
+Each of these is a decision, not an oversight. Each shows up somewhere, and
+together they are the starting list for milestone 2.
+
+| it does not | where that shows |
+| --- | --- |
+| take a thread away from a fiber | a fiber that never suspends keeps its thread for good: the `spin` pitfall, which starves `pool(1)` |
+| interrupt a running `delay` | cancel waits for the `delay` to end: about 490 ms for a `Thread.sleep(500)` |
+| run anything when a fiber is canceled | a canceled fiber runs no handler, so it cannot release what it holds; chapter 08's `Resource` needs `onCancel` and uncancelable regions |
+| cancel a fiber's children with it | `racePair`'s fibers outlive a racer that is canceled while it waits |
+| end a fiber killed by a fatal error | the error escapes the loop and `complete` is never called. Measured 2026-10-23: a `StackOverflowError` in a `delay` kills its thread, and a fiber joining it waits until `unsafeRun` times out |
+| unschedule the timer of a canceled `sleep` | the timer still fires, and its callback finds the suspension claimed and does nothing |
+| hand waiters to the scheduler | waiters run on the thread that ends the fiber, one after the other; here every waiter only hands a loop to the scheduler, so none of them is slow |
+
 ## In code
 
 The executable version of this chapter is

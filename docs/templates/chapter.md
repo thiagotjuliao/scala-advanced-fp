@@ -12,6 +12,12 @@
 
 <!-- TODO: the mechanism itself, in prose. What is actually going on, and why it works. -->
 
+<!-- When the chapter gives the reader complex machinery it does not ask them to
+     write (a run loop, a runtime, an interpreter), add a section here, "Inside
+     the <machinery>": its invariants, diagrams, one program traced step by
+     step, and what it does not do. CONTRIBUTING.md, "Machinery the reader is
+     given", says what goes in it. Delete this comment otherwise. -->
+
 ## In code
 
 The executable version of this chapter is
