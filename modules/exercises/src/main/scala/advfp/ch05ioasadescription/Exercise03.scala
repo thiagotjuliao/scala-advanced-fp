@@ -1,7 +1,5 @@
 package advfp.ch05ioasadescription
 
-import advfp.core.unsolved
-
 /** Exercise 03 — Write programs that run a description more than once.
   *
   * Each of these takes a program and runs it again — something no function
@@ -27,9 +25,20 @@ import advfp.core.unsolved
   */
 object Exercise03:
 
-  def twice[A](io: IO[A]): IO[(A, A)] = unsolved
+  def twice[A](io: IO[A]): IO[(A, A)] =
+    for
+      a1 <- io
+      a2 <- io
+    yield (a1, a2)
 
-  def retry[A](io: IO[A], attempts: Int): IO[A] = unsolved
+  def retry[A](io: IO[A], attempts: Int): IO[A] =
+    require(attempts >= 1, s"retry needs at least one attempt, got $attempts")
 
-  def repeatUntil[A](io: IO[A])(p: A => Boolean): IO[A] = unsolved
+    if attempts == 1 then io
+    else io.handleErrorWith(_ => retry(io, attempts - 1))
+
+  def repeatUntil[A](io: IO[A])(p: A => Boolean): IO[A] =
+    io.flatMap: a =>
+      if p(a) then IO.pure(a)
+      else repeatUntil(io)(p)
 end Exercise03

@@ -1,7 +1,5 @@
 package advfp.ch05ioasadescription
 
-import advfp.core.unsolved
-
 /** Exercise 04 — Make `IO` a `Monad`, check its laws on effects, and write a
   * stack-safe `traverse`.
   *
@@ -21,7 +19,18 @@ import advfp.core.unsolved
   */
 object Exercise04:
 
-  given ioMonad: Monad[IO] = unsolved
+  given ioMonad: Monad[IO] =
+    new Monad[IO]:
+      override def pure[A](a: A): IO[A] = IO.pure(a)
 
-  def traverse[A, B](as: List[A])(f: A => IO[B]): IO[List[B]] = unsolved
+      extension [A](fa: IO[A])
+        override def flatMap[B](f: A => IO[B]): IO[B] =
+          fa.flatMap(f)
+
+  def traverse[A, B](as: List[A])(f: A => IO[B]): IO[List[B]] =
+    as match
+      case Nil => IO.pure(List())
+      case h :: t =>
+        f(h).flatMap(b => traverse(t)(f).map(b :: _))
+
 end Exercise04
