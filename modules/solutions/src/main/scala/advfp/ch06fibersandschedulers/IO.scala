@@ -158,14 +158,10 @@ object IO:
       fa <- a.start
       fb <- b.start
       first <- async[Either[(Outcome[A], Fiber[B]), (Fiber[A], Outcome[B])]]: callback =>
-        // Both fibers may end at once, on two threads: one flag decides.
-        val decided = AtomicBoolean(false)
-        fa.onComplete(o =>
-          if decided.compareAndSet(false, true) then callback(Right(Left((o, fb))))
-        )
-        fb.onComplete(o =>
-          if decided.compareAndSet(false, true) then callback(Right(Right((fa, o))))
-        )
+        // Both fibers may end at once, on two threads, and call back twice:
+        // `async` keeps the first call and ignores the second.
+        fa.onComplete(o => callback(Right(Left((o, fb)))))
+        fb.onComplete(o => callback(Right(Right((fa, o)))))
     yield first
 
   private lazy val timer =
@@ -209,7 +205,9 @@ object IO:
   // The mutable state is the documented exception: three atomics, because a
   // fiber is touched by several threads at once — its own loop, the fibers
   // that join or cancel it, and the callbacks that resume it. Each is changed
-  // only by compare-and-set or by a single write, never by a lock.
+  // only by compare-and-set or by a single write, never by a lock. Why that is
+  // enough — the invariants, and how each race is settled — is in the
+  // chapter's document, "Inside the runtime"; RuntimeSpec checks it.
   private final class FiberLoop[A](program: IO[A], scheduler: Scheduler) extends Fiber[A]:
 
     private val canceled = AtomicBoolean(false)
