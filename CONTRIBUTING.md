@@ -15,6 +15,29 @@ who wanted to know when to reach for one.
 the stack overflow, the law a plausible instance breaks, the compiler message
 verbatim. Six months later that text is how the chapter gets found again.
 
+**Machinery the reader is given gets a section of its own.** When a chapter
+ships a complex definition the exercises use but do not ask for — a run loop,
+a fiber runtime, an interpreter — *The idea* explains what it promises, and an
+*Inside …* section explains how it keeps those promises. That section is what
+the reader comes back to when a milestone asks them to build the same thing,
+so it is written to be consulted, not read once:
+
+- **Organised by invariants, not by lines of code.** Name the few facts
+  everything rests on ("a fiber ends exactly once"), then show how each is
+  kept. The code already says what it does; the section says why it is right.
+- **Diagrams where something moves.** A state diagram for a lifecycle, a
+  sequence diagram for each race between threads, a table for a stack as it
+  grows and shrinks. Mermaid, in the document, so it renders on GitHub and
+  changes in the same diff as the text.
+- **One concrete program traced step by step**, with the state after each step:
+  a reader who can follow one run can follow any.
+- **What it deliberately does not do**, and where that shows up. That list is
+  the starting point of the milestone that rebuilds it.
+- **Claims are checked.** A claim about a race is a test that forces each
+  ordering, with latches rather than luck; a claim about the memory model
+  cites the JLS section. The code's comments stay short and point to the
+  section, so the two cannot drift apart.
+
 ## 2. The spec second
 
 Before the stub, before the solution. The spec is the chapter's contract, and
