@@ -65,6 +65,21 @@ class Exercise01Spec extends CourseSuite:
           if await(first) then met.countDown()
         assert(await(met), "the two tasks did not run at the same time")
     }
+
+    test(s"$name stops a task that never ends, on shutdown") {
+      // The task blocks on a latch nobody counts down: only an interrupt gets
+      // it out, and a shutdown that waits for running tasks never sends one.
+      withScheduler(make()): scheduler =>
+        val started = CountDownLatch(1)
+        val stopped = CountDownLatch(1)
+        scheduler.execute: () =>
+          started.countDown()
+          try CountDownLatch(1).await()
+          catch case _: InterruptedException => stopped.countDown()
+        assert(await(started), "the task never ran")
+        scheduler.shutdown()
+        assert(await(stopped), "the task was still running after shutdown")
+    }
   end for
 
   // --- the pool ----------------------------------------------------------------
@@ -78,6 +93,19 @@ class Exercise01Spec extends CourseSuite:
         done.countDown()
       assert(await(done))
       assert(!virtualThread.get, "the task ran on a virtual thread")
+  }
+
+  test("pool runs its tasks on daemon threads") {
+    // A pool someone forgot to shut down must not keep the JVM from exiting,
+    // and the JVM waits for every thread that is not a daemon.
+    withScheduler(pool(2)): scheduler =>
+      val daemon = AtomicBoolean(false)
+      val done = CountDownLatch(1)
+      scheduler.execute: () =>
+        daemon.set(Thread.currentThread.isDaemon)
+        done.countDown()
+      assert(await(done))
+      assert(daemon.get, "the task ran on a thread that keeps the JVM alive")
   }
 
   test("pool(3) runs three tasks at once, and never four") {
