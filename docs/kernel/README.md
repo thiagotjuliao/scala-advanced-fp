@@ -7,7 +7,7 @@ into decisions.
 
 | milestone | design | after |
 | --- | --- | --- |
-| M1 — the law checker | `m01-the-law-checker.md` | chapter 02 |
+| M1 — the law checker | [`m01-the-law-checker.md`](m01-the-law-checker.md) | chapter 02 (started after 06) |
 | M2 — the runtime | `m02-the-runtime.md` | chapter 08 |
 | M3 — the DSL | `m03-the-dsl.md` | chapter 12 |
 | M4 — the executor | `m04-the-executor.md` | chapter 15 |
