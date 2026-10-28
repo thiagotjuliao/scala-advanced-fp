@@ -1,6 +1,6 @@
 package advfp.ch06fibersandschedulers
 
-import advfp.core.unsolved
+import Outcome.*
 
 /** Exercise 03 — Write `joinValue`, and `both`: two programs run at the same
   * time.
@@ -24,7 +24,27 @@ object Exercise03:
 
   final class FiberCanceled extends RuntimeException("the fiber was canceled")
 
-  extension [A](fiber: Fiber[A]) def joinValue: IO[A] = unsolved
+  extension [A](fiber: Fiber[A])
+    def joinValue: IO[A] =
+      fiber.join.flatMap:
+        case Succeeded(value) => IO.pure(value)
+        case Errored(error) => IO.raiseError(error)
+        case Canceled => IO.raiseError(FiberCanceled())
 
-  def both[A, B](a: IO[A], b: IO[B]): IO[(A, B)] = unsolved
+  def both[A, B](a: IO[A], b: IO[B]): IO[(A, B)] =
+    for
+      fa <- a.start
+      fb <- b.start
+      oa <- fa.join
+      res <-
+        oa match
+          case Succeeded(a) =>
+            fb.joinValue.map(b => (a, b))
+          case Errored(error) =>
+            fb.cancel.flatMap(_ => IO.raiseError(error))
+          case Canceled =>
+            fb.cancel.flatMap(_ => IO.raiseError(FiberCanceled()))
+
+    yield res
+
 end Exercise03

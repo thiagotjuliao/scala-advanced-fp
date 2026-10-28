@@ -1,6 +1,8 @@
 package advfp.ch06fibersandschedulers
 
-import advfp.core.unsolved
+import scala.util.control.NonFatal
+import scala.annotation.tailrec
+import advfp.ch06fibersandschedulers.Outcome.*
 
 /** Exercise 02 — Write a run loop that ends in an `Outcome`, and stops at its
   * cancellation points.
@@ -40,6 +42,13 @@ object Exercise02:
 
   import IO.*
 
+  enum Stack[-X, +A]:
+    case Empty[A]() extends Stack[A, A]
+    case Bind[X, E, A](f: X => IO[E], stack: Stack[E, A]) extends Stack[X, A]
+    case Handler[X, A](h: Throwable => IO[X], stack: Stack[X, A]) extends Stack[X, A]
+
+  import Stack.*
+
   extension [A](io: IO[A])
     def flatMap[B](f: A => IO[B]): IO[B] = FlatMap(io, f)
 
@@ -47,5 +56,38 @@ object Exercise02:
 
     def handleErrorWith[B >: A](handler: Throwable => IO[B]): IO[B] = HandleErrorWith(io, handler)
 
-    def run(isCanceled: () => Boolean): Outcome[A] = unsolved
+    def run(isCanceled: () => Boolean): Outcome[A] =
+      def guard[A](io: => IO[A]): IO[A] =
+        try io
+        catch case NonFatal(e) => RaiseError(e)
+
+      @tailrec def loop[X, A](io: IO[X], stack: Stack[X, A]): Outcome[A] =
+        io match
+          case p @ Pure(a) =>
+            stack match
+              case Empty() => Succeeded(a)
+              case Bind(f, rest) =>
+                if isCanceled() then Canceled
+                else loop(guard(f(a)), rest)
+              case Handler(_, stack) =>
+                loop(p, stack)
+
+          case RaiseError(error) =>
+            stack match
+              case Empty() => Errored(error)
+              case Bind(_, rest) => loop(RaiseError(error), rest)
+              case Handler(h, rest) =>
+                if isCanceled() then Canceled
+                else loop(guard(h(error)), rest)
+
+          case Delay(thunk) =>
+            loop(guard(Pure(thunk())), stack)
+
+          case FlatMap(source, f) => loop(source, Bind(f, stack))
+
+          case HandleErrorWith(source, handler) => loop(source, Handler(handler, stack))
+
+      loop(io, Empty())
+    end run
+  end extension
 end Exercise02

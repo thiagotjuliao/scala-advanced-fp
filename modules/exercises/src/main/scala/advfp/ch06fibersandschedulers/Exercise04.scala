@@ -1,8 +1,10 @@
 package advfp.ch06fibersandschedulers
 
-import advfp.core.unsolved
+import advfp.ch06fibersandschedulers.Exercise03.joinValue
 
 import scala.concurrent.duration.FiniteDuration
+
+import Outcome.*
 
 /** Exercise 04 — Write `race`, which cancels the loser, and `timeout` on top of
   * it.
@@ -28,7 +30,25 @@ import scala.concurrent.duration.FiniteDuration
   */
 object Exercise04:
 
-  def race[A, B](a: IO[A], b: IO[B]): IO[Either[A, B]] = unsolved
+  def race[A, B](a: IO[A], b: IO[B]): IO[Either[A, B]] =
+    IO.racePair(a, b)
+      .flatMap:
+        case Left(oa, fb) =>
+          oa match
+            case Succeeded(a) => fb.cancel.flatMap(_ => IO.pure(Left(a)))
+            case Errored(error) => fb.cancel.flatMap(_ => IO.raiseError(error))
+            case Canceled => fb.joinValue.map(Right(_))
 
-  extension [A](io: IO[A]) def timeout(duration: FiniteDuration): IO[A] = unsolved
+        case Right(fa, ob) =>
+          ob match
+            case Succeeded(b) => fa.cancel.flatMap(_ => IO.pure(Right(b)))
+            case Errored(error) => fa.cancel.flatMap(_ => IO.raiseError(error))
+            case Canceled => fa.joinValue.map(Left(_))
+
+  extension [A](io: IO[A])
+    def timeout(duration: FiniteDuration): IO[A] =
+      race(io, IO.sleep(duration)).flatMap:
+        case Left(a) => IO.pure(a)
+        case Right(_) => IO.raiseError(new java.util.concurrent.TimeoutException)
+
 end Exercise04

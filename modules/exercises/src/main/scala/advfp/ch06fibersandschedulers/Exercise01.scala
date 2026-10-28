@@ -1,6 +1,8 @@
 package advfp.ch06fibersandschedulers
 
-import advfp.core.unsolved
+import java.lang.Thread
+import java.util.concurrent.Executors
+import java.util.concurrent.ExecutorService
 
 /** Exercise 01 — Write two schedulers behind one interface: a pool of OS
   * threads, and virtual threads.
@@ -30,7 +32,29 @@ object Exercise01:
     def execute(task: Runnable): Unit
     def shutdown(): Unit
 
-  def pool(threads: Int): Scheduler = unsolved
+  object Scheduler:
+    def from(es: ExecutorService): Scheduler =
+      new Scheduler:
+        override def execute(task: Runnable): Unit =
+          es.execute(task)
 
-  def virtual(): Scheduler = unsolved
+        override def shutdown(): Unit =
+          val _ = es.shutdownNow()
+
+  def pool(threads: Int): Scheduler =
+    require(threads >= 1, "a thread pool must have at least 1 thread")
+
+    val daemonThreadFactory = Thread
+      .ofPlatform()
+      .daemon()
+      .factory()
+
+    val threadPoolExecutorService =
+      Executors.newFixedThreadPool(threads, daemonThreadFactory)
+
+    Scheduler.from(threadPoolExecutorService)
+
+  def virtual(): Scheduler =
+    val virtualExecutorService = Executors.newVirtualThreadPerTaskExecutor()
+    Scheduler.from(virtualExecutorService)
 end Exercise01
