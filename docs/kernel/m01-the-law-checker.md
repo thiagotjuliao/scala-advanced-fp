@@ -40,7 +40,9 @@ graph LR
   `Monoid`, `Functor`, `Applicative`, `Monad`, `Foldable`, `Traverse`, and
   their instances for the standard types the suites are tested against
   (`Int`, `Option`, `Either[E, *]`, `List`). One hierarchy for the whole
-  kernel. See [ADR 0001](decisions/0001-a-typeclasses-module.md).
+  kernel. See [ADR 0001](decisions/0001-a-typeclasses-module.md), and
+  [ADR 0007](decisions/0007-one-instance-per-type.md) for where the
+  instances live.
 - **`modules/laws`**, package `laws`: generators, shrinking, the runner,
   and the law suites. Its main sources depend on `typeclasses` only. No munit
   either: the curriculum allows munit only in tests.
