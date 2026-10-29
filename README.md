@@ -50,7 +50,9 @@ a compile error into a failing test instead of a broken build.
 | `modules/laws` | M1: property-based testing and law suites |
 | `modules/kernel` | M2–M6: the kernel |
 
-All three modules start empty, and everything in them is written by hand. The
+All three modules start empty, and their implementations are written by hand
+(the tests and Scaladoc aside; see
+[ADR 0006](docs/kernel/decisions/0006-tests-and-scaladoc-in-the-milestones.md)). The
 chapters never depend on them.
 
 ## Running

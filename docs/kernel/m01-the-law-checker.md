@@ -47,7 +47,9 @@ graph LR
 - **`modules/kernel`** depends on `typeclasses` for compile and on `laws` for
   test.
 
-Like `laws` and `kernel`, `typeclasses` is written by Thiago only. The build
+Like `laws` and `kernel`, `typeclasses` is written by Thiago only, except the
+tests and Scaladoc (see
+[ADR 0006](decisions/0006-tests-and-scaladoc-in-the-milestones.md)). The build
 change (a new project, `verify`, and the table in `CLAUDE.md`) comes first, on
 this branch.
 

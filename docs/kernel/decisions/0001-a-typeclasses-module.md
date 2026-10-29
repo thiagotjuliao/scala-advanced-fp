@@ -16,7 +16,9 @@ A third built-from-scratch module, `modules/typeclasses`, holds the hierarchy
 (`Eq` through `Traverse`) and its instances for the standard types. `laws` and
 `kernel` depend on it for compile, `kernel` depends on `laws` for test only. It
 is written by Thiago only, like the other two, and compiles with
-`CompilerFlags.strict`.
+`CompilerFlags.strict`. (Amended by
+[0006](0006-tests-and-scaladoc-in-the-milestones.md): the tests and Scaladoc
+of all three may be Claude's.)
 
 ## Alternatives
 

@@ -16,14 +16,18 @@ file wins.
 | --- | --- |
 | `modules/core`, `modules/exercises`, `modules/solutions`, `docs/theory` | Claude, chapter by chapter |
 | `docs/kernel/` — design documents and ADRs | Thiago and Claude, together |
-| `modules/typeclasses`, `modules/laws`, `modules/kernel` | **Thiago only** |
+| `modules/typeclasses`, `modules/laws`, `modules/kernel` — implementations | **Thiago only** |
+| `modules/typeclasses`, `modules/laws`, `modules/kernel` — tests and Scaladoc | Claude |
 
-**Claude does not write source code in `modules/typeclasses`, `modules/laws` or
-`modules/kernel`** — no implementations, no tests, no stubs, not even a fix,
-however small. The milestones exist so that they are built by hand from an
-empty module. In those modules Claude reviews, explains, points at the bug, and
-helps with the design document; the code is written by Thiago. If a task seems
-to need code there, stop and say so instead.
+**In `modules/typeclasses`, `modules/laws` and `modules/kernel` Claude writes
+the tests and the Scaladoc, and nothing else** — no implementations, no stubs,
+not even a fix, however small: every trait, type, method and instance is
+Thiago's. The milestones exist so that they are built by hand from an empty
+module. There Claude also reviews, explains, points at the bug, and helps with
+the design document. If a task seems to need implementation code there, stop
+and say so instead. A test Claude writes is checked by reintroducing the bug it
+targets and watching it go red. See
+[ADR 0006](docs/kernel/decisions/0006-tests-and-scaladoc-in-the-milestones.md).
 
 ## Before writing a chapter
 
