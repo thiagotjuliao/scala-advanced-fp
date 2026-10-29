@@ -25,7 +25,7 @@ object Functor:
   def apply[F[_]](using ev: Functor[F]): Functor[F] = ev
 
   /** `Some` only when both the function and the value are there. */
-  given Applicative[Option] = new Applicative[Option]:
+  given Monad[Option] = new Monad[Option]:
     override def pure[A](a: A): Option[A] = Some(a)
 
     override def ap[A, B](ff: Option[A => B])(fa: Option[A]): Option[B] =
@@ -33,26 +33,35 @@ object Functor:
         case None => None
         case Some(f) => fa.map(f)
 
+    override def flatMap[A, B](fa: Option[A])(f: A => Option[B]): Option[B] =
+      fa.flatMap(f)
+
   /** Every function applied to every value, the functions as the outer loop:
     * `ap(List(f, g))(List(1, 2)) == List(f(1), f(2), g(1), g(2))`. Swapping
     * the loops gives another lawful applicative, but not the one that agrees
     * with `List`'s `flatMap`. Zipping instead is lawful only with an infinite
     * `pure` (chapter 02, exercise 04).
     */
-  given Applicative[List] = new Applicative[List]:
+  given Monad[List] = new Monad[List]:
     override def pure[A](a: A): List[A] = List(a)
 
     override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
       ff.flatMap(f => fa.map(f))
 
+    override def flatMap[A, B](fa: List[A])(f: A => List[B]): List[B] =
+      fa.flatMap(f)
+
   /** The function's side decides first: when both are `Left`, the function's
-    * `Left` is the result, as `flatMap` will need it to be. `map` passes a
+    * `Left` is the result, as agreeing with `flatMap` requires. `map` passes a
     * `Left` through without calling `f`.
     */
-  given [E] => Applicative[[A] =>> Either[E, A]] = new Applicative[[A] =>> Either[E, A]]:
+  given [E] => Monad[[A] =>> Either[E, A]] = new Monad[[A] =>> Either[E, A]]:
     override def pure[A](a: A): Either[E, A] = Right(a)
 
     override def ap[A, B](ff: Either[E, A => B])(fa: Either[E, A]): Either[E, B] =
       ff.flatMap(f => fa.map(f))
+
+    override def flatMap[A, B](fa: Either[E, A])(f: A => Either[E, B]): Either[E, B] =
+      fa.flatMap(f)
 
 end Functor

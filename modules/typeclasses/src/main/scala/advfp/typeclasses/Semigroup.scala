@@ -10,6 +10,14 @@ package advfp.typeclasses
 trait Semigroup[A]:
   def combine(x: A, y: A): A
 
+  /** A member of the instance, so it is found wherever a `Semigroup[A]` given
+    * is visible: as a context parameter, or by `import Semigroup.given` for
+    * the standard instances.
+    */
+  extension (self: A)
+    def |+|(other: A)(using ev: Semigroup[A]): A =
+      ev.combine(self, other)
+
 /** The instances for the standard types the suites are tested against, for
   * `Semigroup` and `Monoid` both: one per type, here at the root of the
   * hierarchy, so a search for either finds it (see
@@ -18,10 +26,6 @@ trait Semigroup[A]:
   */
 object Semigroup:
   def apply[A](using ev: Semigroup[A]): Semigroup[A] = ev
-
-  extension [A](self: A)
-    def |+|(other: A)(using ev: Semigroup[A]): A =
-      ev.combine(self, other)
 
   /** Addition, with 0. It wraps on overflow, and stays associative: addition
     * modulo 2^32 is.

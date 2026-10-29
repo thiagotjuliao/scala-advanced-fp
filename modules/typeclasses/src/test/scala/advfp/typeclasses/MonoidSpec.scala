@@ -1,7 +1,7 @@
 package advfp.typeclasses
 
 import advfp.typeclasses.Eq.===
-import advfp.typeclasses.Semigroup.|+|
+import advfp.typeclasses.Semigroup.given
 import munit.{FunSuite, Location}
 
 class MonoidSpec extends FunSuite:

@@ -22,6 +22,13 @@ trait Applicative[F[_]] extends Functor[F]:
   override def map[A, B](fa: F[A])(f: A => B): F[B] =
     ap(pure(f))(fa)
 
+  /** `ff.ap(fa)`, found wherever an `Applicative[F]` given is visible. On a
+    * type with a member `ap` of its own, the member wins.
+    */
+  extension [A, B](ff: F[A => B])
+    def ap(fa: F[A])(using ev: Applicative[F]): F[B] =
+      ev.ap(ff)(fa)
+
 /** The instances are in `Functor`'s companion, the root of the hierarchy
   * (docs/kernel/decisions/0007-one-instance-per-type.md).
   */
