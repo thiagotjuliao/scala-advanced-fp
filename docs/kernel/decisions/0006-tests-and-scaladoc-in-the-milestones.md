@@ -28,6 +28,13 @@ the rule.
 
 A test Claude writes must fail against the bug it is meant to catch, checked
 by reintroducing that bug once. `EqSpec` was checked that way against four
-mutants of `Eq`. A test may not stand in for a design decision: what a type
+mutants of `Eq`.
+
+A mutant the tests let through is compiled again, with a unique comment added,
+before it is believed. On 2026-10-29 a duplicate `Applicative[List]` passed
+`MonadSpec` twice, the second time after `typeclasses/clean`, and failed it
+once a marker comment forced sbt 2 to compile it.
+
+A test may not stand in for a design decision: what a type
 promises is settled in the milestone's design document first, and the tests
 follow it.
