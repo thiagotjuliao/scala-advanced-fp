@@ -77,18 +77,26 @@ lazy val solutions = project
   .dependsOn(chapterDeps)
   .settings(commonSettings, strictSettings, snippetSettings, name := "advfp-solutions")
 
+// The typeclass hierarchy the milestones share, written from scratch. One
+// module so that `laws` checks the same `Monad` the kernel implements; see
+// docs/kernel/decisions/0001-a-typeclasses-module.md.
+lazy val typeclasses = project
+  .in(file("modules/typeclasses"))
+  .settings(commonSettings, strictSettings, name := "advfp-typeclasses")
+
 // Milestone 1, written from scratch: property-based testing and law suites.
 // Nothing of the course's own depends on it — the chapters' specs must not
 // lean on code the learner is still writing.
 lazy val laws = project
   .in(file("modules/laws"))
+  .dependsOn(typeclasses)
   .settings(commonSettings, strictSettings, name := "advfp-laws")
 
 // Milestones 2 to 6, written from scratch: the pipeline kernel. Its tests use
-// the law checker; its main sources depend on nothing.
+// the law checker; its main sources depend on the typeclasses only.
 lazy val kernel = project
   .in(file("modules/kernel"))
-  .dependsOn(laws % "test->compile")
+  .dependsOn(typeclasses, laws % "test->compile")
   .settings(commonSettings, strictSettings, name := "advfp-kernel")
 
 // Scratch space. Nothing here is verified and nothing depends on it. The
@@ -101,7 +109,7 @@ lazy val playground = project
 
 lazy val root = project
   .in(file("."))
-  .aggregate(core, exercises, solutions, laws, kernel, playground)
+  .aggregate(core, exercises, solutions, typeclasses, laws, kernel, playground)
   .settings(
     name := "scala-advanced-fp",
     publish / skip := true
@@ -109,7 +117,7 @@ lazy val root = project
 
 // The gate, and the only definition of "green" in this repository: everything
 // formatted, the helpers in core passing their own tests, the answer key and
-// both milestone modules passing, and the exercises still compiling.
+// the three milestone modules passing, and the exercises still compiling.
 // `scripts/finish-chapter.sh` runs exactly this.
 //
 // `testFull`, not `test`: under sbt 2 the `test` task is incremental — it runs
@@ -119,7 +127,7 @@ lazy val root = project
 addCommandAlias(
   "verify",
   "scalafmtCheckAll; scalafmtSbtCheck; core/testFull; solutions/testFull; " +
-    "laws/testFull; kernel/testFull; exercises/Test/compile"
+    "typeclasses/testFull; laws/testFull; kernel/testFull; exercises/Test/compile"
 )
 
 // The practice run. Red by design — every unsolved exercise is a failure here,
