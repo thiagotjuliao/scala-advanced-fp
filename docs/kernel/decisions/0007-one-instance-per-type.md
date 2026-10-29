@@ -60,5 +60,8 @@ only `Semigroup[A]`), one object cannot serve both, and two givens are
 unavoidable. M1 does not need such an instance. If one is needed, it gets its
 own decision, with what the compiler does when both givens match.
 
-The tests check coherence directly: for each type, the instance summoned at
-every level of the hierarchy is the same object (`eq`).
+The tests check coherence directly, for each type, at every level of the
+hierarchy. A given without parameters is one object, so the summoned
+instances are compared with `eq`. A given with parameters (`Monoid[Option[A]]`)
+builds a new object on every search, so `eq` would fail on a coherent instance.
+There the test compares the instances' classes.
