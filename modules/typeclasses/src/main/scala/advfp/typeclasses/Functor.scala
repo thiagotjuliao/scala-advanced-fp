@@ -24,19 +24,35 @@ trait Functor[F[_]]:
 object Functor:
   def apply[F[_]](using ev: Functor[F]): Functor[F] = ev
 
-  given Functor[Option] = new Functor[Option]:
-    override def map[A, B](fa: Option[A])(f: A => B): Option[B] =
-      fa.map(f)
+  /** `Some` only when both the function and the value are there. */
+  given Applicative[Option] = new Applicative[Option]:
+    override def pure[A](a: A): Option[A] = Some(a)
 
-  /** Element by element, in order. */
-  given Functor[List] = new Functor[List]:
-    override def map[A, B](fa: List[A])(f: A => B): List[B] =
-      fa.map(f)
+    override def ap[A, B](ff: Option[A => B])(fa: Option[A]): Option[B] =
+      ff match
+        case None => None
+        case Some(f) => fa.map(f)
 
-  /** Maps the `Right`, and passes a `Left` through without calling `f`. The
-    * types leave no other total implementation: there is no `E` to build a
-    * `Left` from but the one given, and no `B` but `f`'s result.
+  /** Every function applied to every value, the functions as the outer loop:
+    * `ap(List(f, g))(List(1, 2)) == List(f(1), f(2), g(1), g(2))`. Swapping
+    * the loops gives another lawful applicative, but not the one that agrees
+    * with `List`'s `flatMap`. Zipping instead is lawful only with an infinite
+    * `pure` (chapter 02, exercise 04).
     */
-  given [E] => Functor[[A] =>> Either[E, A]] = new Functor[[A] =>> Either[E, A]]:
-    override def map[A, B](fa: Either[E, A])(f: A => B): Either[E, B] =
-      fa.map(f)
+  given Applicative[List] = new Applicative[List]:
+    override def pure[A](a: A): List[A] = List(a)
+
+    override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
+      ff.flatMap(f => fa.map(f))
+
+  /** The function's side decides first: when both are `Left`, the function's
+    * `Left` is the result, as `flatMap` will need it to be. `map` passes a
+    * `Left` through without calling `f`.
+    */
+  given [E] => Applicative[[A] =>> Either[E, A]] = new Applicative[[A] =>> Either[E, A]]:
+    override def pure[A](a: A): Either[E, A] = Right(a)
+
+    override def ap[A, B](ff: Either[E, A => B])(fa: Either[E, A]): Either[E, B] =
+      ff.flatMap(f => fa.map(f))
+
+end Functor
