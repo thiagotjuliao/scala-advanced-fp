@@ -43,7 +43,7 @@ object Tree:
       flatMap(ff)(f => map(fa)(f))
 
     override def flatMap[A, B](fa: Tree[A])(f: A => Tree[B]): Tree[B] =
-      val Tree(value, shrinks) = f(fa.value)
-      val _shrinks = fa.shrinks.map(flatMap(_)(f))
-      Tree(value, _shrinks #::: shrinks)
+      val Tree(value, inner) = f(fa.value)
+      val outer = fa.shrinks.map(flatMap(_)(f))
+      Tree(value, outer #::: inner)
 end Tree
