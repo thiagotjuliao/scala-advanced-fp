@@ -120,6 +120,20 @@ class TraverseSpec extends FunSuite:
     val obtained = Traverse[List].traverse(List.range(0, long))(Option(_))
     assertEquals(obtained.map(_.size), Some(long))
 
+  test("sequence turns a list of effects into an effect of the list"):
+    assertEquals(Traverse[List].sequence(List(Option(1), Option(2))), Some(List(1, 2)))
+    assertEquals(Traverse[List].sequence(List(Option(1), None)), None)
+    assertEquals(Traverse[List].sequence(List.empty[Option[Int]]), Some(Nil))
+
+  test("sequence runs the effects left to right"):
+    val eithers: List[IntOr[Int]] = List(Right(0), Left(1), Left(2))
+    assertEquals(Traverse[List].sequence[IntOr, Int](eithers), Left(1))
+    assertEquals(Traverse[List].sequence(List(List(1, 2), List(3))), List(List(1, 3), List(2, 3)))
+
+  test("sequence on Option moves the effect outside"):
+    assertEquals(Traverse[Option].sequence(Option(List(1, 2))), List(Some(1), Some(2)))
+    assertEquals(Traverse[Option].sequence(Option.empty[List[Int]]), List(None))
+
   // ADR 0007 and its addendum: one instance per type, found from both roots.
 
   test("Option: Functor, Monad, Foldable and Traverse are the same instance"):

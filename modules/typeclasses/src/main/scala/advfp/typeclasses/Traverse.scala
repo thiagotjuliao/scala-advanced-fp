@@ -24,6 +24,13 @@ package advfp.typeclasses
 trait Traverse[F[_]] extends Foldable[F], Functor[F]:
   def traverse[G[_]: Applicative, A, B](fa: F[A])(f: A => G[B]): G[F[B]]
 
+  /** Turns a structure of effects into one effect of the structure: a list of
+    * `IO`s into an `IO` of a list. The effects run in the order `traverse`
+    * runs them, left to right.
+    */
+  def sequence[G[_]: Applicative, A](fga: F[G[A]]): G[F[A]] =
+    traverse(fga)(identity)
+
 /** The instances are in `Functor`'s companion, with aliases in `Foldable`'s
   * (docs/kernel/decisions/0007-one-instance-per-type.md, addendum).
   */
