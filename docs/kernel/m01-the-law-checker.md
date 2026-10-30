@@ -118,7 +118,9 @@ final case class Gen[A](run: (Seed, Size) => Tree[A])
 
 A pure function of the seed and the size. That is `State[Seed, A]` from
 chapter 03 with a size beside it and a tree around the result, but written
-directly: `laws` does not depend on the course's `State`.
+directly: `laws` does not depend on the course's `State`. `map` and `flatMap`
+are member methods, so for-comprehensions work on `Gen`
+([ADR 0009](decisions/0009-gen-syntax-as-member-methods.md)).
 
 **Promises.** Deterministic: the same seed and size give the same tree. Lawful:
 `Monad[Gen]` passes the Monad suite, where two generators are equal when they
