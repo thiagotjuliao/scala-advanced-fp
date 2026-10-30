@@ -122,10 +122,13 @@ directly: `laws` does not depend on the course's `State`. `map` and `flatMap`
 are member methods, so for-comprehensions work on `Gen`
 ([ADR 0009](decisions/0009-gen-syntax-as-member-methods.md)).
 
-**Promises.** Deterministic: the same seed and size give the same tree. Lawful:
-`Monad[Gen]` passes the Monad suite, where two generators are equal when they
-agree on the root of their trees for a fixed set of seeds and sizes. The
-checker checks its own generator, which previews how M2 compares two `IO`s.
+**Promises.** Deterministic: the same seed and size give the same tree.
+Lawful in distribution: `flatMap` splits the seed, so the monad laws cannot
+hold seed by seed, and they are checked on histograms over fixed seeds; the
+functor laws do hold seed by seed. Independent: the two sides of `flatMap`
+draw uncorrelated numbers. See
+[ADR 0010](decisions/0010-gen-is-lawful-in-distribution.md). The checker
+checks its own generator, which previews how M2 compares two `IO`s.
 
 The primitive generators are the ones the suites need, and no more: `const`,
 `choose(lo, hi)` for `Int` (shrinks toward the bound nearest to 0), `bool`,
@@ -264,7 +267,9 @@ The tests of `laws` itself, written alongside the code:
   exactly `100`. `xs.sum < 10` shrinks to a list whose sum is exactly 10.
 - **Reproducibility.** Running again with a report's seed and size gives the
   same failing input.
-- **Gen is a monad.** `Monad[Gen]` passes the Monad suite.
+- **Gen is a monad in distribution.** The functor laws hold seed by seed,
+  the monad laws in distribution, and the two sides of `flatMap` are
+  independent (ADR 0010).
 - **Each suite discriminates.** It passes a lawful instance and fails an
   unlawful one, with the failure reported against the right law.
 
@@ -298,6 +303,5 @@ M1 is done when all of this is green under `sbt verify`. The branch,
 
 ## Open questions
 
-- **How many seeds and sizes make two `Gen`s "equal"?** Too few and
-  `Monad[Gen]` passes a wrong instance; too many and the suite is slow. Measure
-  it, and record the number.
+None at the moment.
+
