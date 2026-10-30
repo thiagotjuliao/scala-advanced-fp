@@ -91,6 +91,21 @@ lazy because it is infinite in practice, and the shrinker walks one path
 through it. It is a monad, and `Gen`'s monad is built on it. See
 [ADR 0003](decisions/0003-integrated-shrinking.md).
 
+**Why `LazyList`.** It is lazy per element: looking for the first candidate
+that still fails computes the candidates up to that one and no further. An
+`Eval[List[Tree[A]]]` would build every sibling at once, the thousand
+one-element-shorter lists of a thousand-element list included, and getting
+laziness per element from `Eval` means writing a stream on top of it, which is
+`LazyList` again. `LazyList` is also in the standard library, while chapter
+04's `Eval` lives in `solutions`, which `laws` cannot depend on. Its
+memoization neither helps nor hurts: the shrinker visits each node once.
+Decided 2026-10-30.
+
+**Trap.** `Tree`'s `==` is not usable: on `LazyList` it forces both trees
+whole, and a tree from a generator is infinite in practice. Trees are compared
+down to a bounded depth. Likewise `LazyList(a, b, c)` evaluates its arguments
+at once; candidates are built with `#::`, `unfold` or `map` over a lazy source.
+
 **Promise.** Every value in a generator's tree is a value the generator could
 have produced. `choose(10, 20)` never shrinks to 0. This promise is what
 integrated shrinking buys, and the tests check it.
@@ -281,9 +296,6 @@ M1 is done when all of this is green under `sbt verify`. The branch,
 
 ## Open questions
 
-- **`LazyList` or chapter 04's `Eval` for the tree's laziness?** `LazyList`
-  memoizes, which is free here: the shrinker walks one path once. Decide when
-  writing `Tree`.
 - **How many seeds and sizes make two `Gen`s "equal"?** Too few and
   `Monad[Gen]` passes a wrong instance; too many and the suite is slow. Measure
   it, and record the number.
