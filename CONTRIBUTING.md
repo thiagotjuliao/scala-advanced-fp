@@ -111,9 +111,11 @@ whose answer key still contains `unsolved` or `TODO`.
 
 # Working on a milestone
 
-The milestones are built in `modules/laws` and `modules/kernel`, by hand and
-from scratch. There is no stub and no answer key, and nobody but the learner
-writes code there.
+The milestones are built in `modules/typeclasses`, `modules/laws` and
+`modules/kernel`, by hand and from scratch. There is no stub and no answer key,
+and nobody but the learner writes the implementations there; the tests and
+Scaladoc may be Claude's
+([ADR 0006](docs/kernel/decisions/0006-tests-and-scaladoc-in-the-milestones.md)).
 
 1. **The design first**, in `docs/kernel/mNN-*.md`: the problem, the types and
    their laws, where each interpreter draws its boundary, and the test plan.

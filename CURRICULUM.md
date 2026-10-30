@@ -425,9 +425,10 @@ Composition and data quality, and the kernel as one piece.
 `sbt verify` is the definition of green, run by CI and by `finish-chapter`:
 
 - formatting (`scalafmtCheckAll`, `scalafmtSbtCheck`);
-- `core`, `solutions`, `laws` and `kernel` pass with `testFull`;
+- `core`, `solutions`, `typeclasses`, `laws` and `kernel` pass with `testFull`;
 - `exercises` compiles, with its specs red where work remains.
 
-`laws`, `kernel` and `solutions` compile with `CompilerFlags.strict`
-(`-source:future -Wall -Werror`): a warning there is a defect. `exercises` uses
-`base`, because a stub ignores its parameters on purpose.
+`typeclasses`, `laws`, `kernel` and `solutions` compile with
+`CompilerFlags.strict` (`-source:future -Wall -Werror`): a warning there is a
+defect. `exercises` uses `base`, because a stub ignores its parameters on
+purpose.

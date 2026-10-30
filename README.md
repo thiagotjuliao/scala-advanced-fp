@@ -46,17 +46,20 @@ a compile error into a failing test instead of a broken build.
 | --- | --- |
 | `docs/kernel/mNN-*.md` | the design, written before any code |
 | `docs/kernel/decisions/` | the decisions made on the way, one file each |
+| `modules/typeclasses` | the typeclass hierarchy `laws` and `kernel` share |
 | `modules/laws` | M1: property-based testing and law suites |
 | `modules/kernel` | M2–M6: the kernel |
 
-Both modules start empty, and everything in them is written by hand. The
+All three modules start empty, and their implementations are written by hand
+(the tests and Scaladoc aside; see
+[ADR 0006](docs/kernel/decisions/0006-tests-and-scaladoc-in-the-milestones.md)). The
 chapters never depend on them.
 
 ## Running
 
 | command | what it does |
 | --- | --- |
-| `sbt verify` | the gate — formatting, `core`, the answer key, `laws` and `kernel` with `testFull`, and the exercises compiling |
+| `sbt verify` | the gate — formatting, `core`, the answer key, `typeclasses`, `laws` and `kernel` with `testFull`, and the exercises compiling |
 | `sbt practice` | every exercise spec, red where work remains |
 | `sbt "exercises/testOnly advfp.ch01typeclassesandlaws.*"` | one chapter's exercises |
 | `sbt "solutions/testOnly advfp.ch01typeclassesandlaws.*"` | the same, against the answer key |
@@ -130,5 +133,5 @@ scripts/
 Shared with every project built from
 [project-templates](https://github.com/thiagotjuliao/project-templates), in
 [CONVENTIONS.md](CONVENTIONS.md); [CLAUDE.md](CLAUDE.md) has what is specific
-to this one. `core`, `solutions`, `laws` and `kernel` compile their main
-sources with `-source:future -Wall -Werror`. Developed and built on Java 21.
+to this one. `core`, `solutions`, `typeclasses`, `laws` and `kernel` compile
+their main sources with `-source:future -Wall -Werror`. Developed and built on Java 21.
