@@ -94,3 +94,14 @@ So the rule becomes:
 The coherence tests add the second root: once a type is a `Traverse`, its
 `Foldable` and its `Functor` are the same instance, compared with `eq` or by
 class as above.
+
+## Addendum — types of our own
+
+2026-10-30 · amends the decision above
+
+The rule above is written for the standard types, whose companions are not
+ours to add to. A type defined in this repository (`Tree`, then `Gen`) keeps
+its one instance in its own companion: the companion of a type argument is in
+the implicit scope of every typeclass of that type, so every search finds the
+same object there, with no import and nothing added to `object Functor`. The
+coherence tests are the same.
