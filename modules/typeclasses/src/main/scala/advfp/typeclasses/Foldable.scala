@@ -17,17 +17,12 @@ package advfp.typeclasses
 trait Foldable[F[_]]:
   def foldLeft[A, B](fa: F[A])(z: B)(f: (B, A) => B): B
 
-/** The instances for the standard types. When `Traverse` arrives, each one
-  * becomes an alias to the type's instance in `Functor`'s companion (ADR 0007,
-  * addendum).
+/** Aliases to the instances in `Functor`'s companion, not instances of their
+  * own: a search for `Foldable` does not look there (ADR 0007, addendum).
   */
 object Foldable:
   def apply[F[_]](using ev: Foldable[F]): Foldable[F] = ev
 
-  given Foldable[Option] = new Foldable[Option]:
-    override def foldLeft[A, B](fa: Option[A])(z: B)(f: (B, A) => B): B =
-      fa.foldLeft(z)(f)
+  given Foldable[Option] = Functor.optionInstances
 
-  given Foldable[List] = new Foldable[List]:
-    override def foldLeft[A, B](fa: List[A])(z: B)(f: (B, A) => B): B =
-      fa.foldLeft(z)(f)
+  given Foldable[List] = Functor.listInstances

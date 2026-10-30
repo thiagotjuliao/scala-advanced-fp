@@ -22,6 +22,12 @@ trait Applicative[F[_]] extends Functor[F]:
   override def map[A, B](fa: F[A])(f: A => B): F[B] =
     ap(pure(f))(fa)
 
+  /** Combines two values with `f`. `fa`'s effect runs before `fb`'s, which is
+    * what keeps a `traverse` built on it left to right.
+    */
+  def map2[A, B, C](fa: F[A], fb: F[B])(f: (A, B) => C): F[C] =
+    ap(ap(pure(f.curried))(fa))(fb)
+
   /** `ff.ap(fa)`, found wherever an `Applicative[F]` given is visible. On a
     * type with a member `ap` of its own, the member wins.
     */
