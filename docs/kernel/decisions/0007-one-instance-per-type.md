@@ -65,3 +65,32 @@ hierarchy. A given without parameters is one object, so the summoned
 instances are compared with `eq`. A given with parameters (`Monoid[Option[A]]`)
 builds a new object on every search, so `eq` would fail on a coherent instance.
 There the test compares the instances' classes.
+
+## Addendum — a second root
+
+2026-10-30 · amends the decision above
+
+`Foldable` does not extend `Functor`, so the `Functor` hierarchy is not a
+tree: `Traverse` will extend both, and a search for `Foldable[Option]` looks in
+`object Foldable` only. Measured in `playground` the same day (Scala 3.9.0):
+
+| where the givens are | result |
+| --- | --- |
+| one `Traverse[Option]` in `object Functor` | `summon[Traverse[Option]]` compiles; `summon[Foldable[Option]]` does not: "No given instance of type probe.without.Foldable[Option] was found". |
+| `given optionInstances: (Monad[Option] & Traverse[Option])` in `object Functor`, and `given Foldable[Option] = Functor.optionInstances` in `object Foldable` | `Functor`, `Monad`, `Foldable` and `Traverse` of `Option` all resolve, all `eq` to `optionInstances`. |
+
+So the rule becomes:
+
+- The one object per type lives in `object Functor`, as a **named** given, so
+  it can be referred to.
+- Each other root (`Foldable` for now) gets a given **alias** to that object,
+  typed as that root only (`Foldable[Option]`, not the intersection). An alias
+  is not a second instance: it evaluates to the same object.
+- Until `Traverse` exists, a type that is `Foldable` but not yet `Traverse`
+  may have its own `Foldable` instance in `object Foldable`; the two
+  hierarchies share no method, so they cannot disagree. When `Traverse`
+  arrives, that instance becomes the alias.
+
+The coherence tests add the second root: once a type is a `Traverse`, its
+`Foldable` and its `Functor` are the same instance, compared with `eq` or by
+class as above.
