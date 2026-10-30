@@ -27,6 +27,37 @@ final case class Gen[A](run: (Seed, Size) => Tree[A]):
     Monad[Tree].flatMap(fa)(a => f(a).run(s2, size))
 
 object Gen:
+  /** Always `a`, with nothing to shrink to. */
+  def const[A](a: A): Gen[A] =
+    Monad[Gen].pure(a)
+
+  /** A uniform `Int` from `lo` to `hi`, both included; the size is ignored.
+    *
+    * It shrinks toward the value of the range nearest to 0: 0 when the range
+    * holds it, else `lo` or `hi`. Never out of the range, so `choose(10, 20)`
+    * never shrinks to 0. The candidates halve the distance to that target, the
+    * target first, so the shrinker finds the edge of a failure by bisection.
+    *
+    * @throws IllegalArgumentException
+    *   if `lo > hi`, at the call, not when the generator runs
+    */
+  def choose(lo: Int, hi: Int): Gen[Int] =
+    require(lo <= hi, s"chosen interval must be valid: $lo and $hi")
+
+    Gen: (seed, _) =>
+      val count = hi.toLong - lo.toLong + 1
+      val value = (lo + Math.floorMod(seed.next._1, count)).toInt
+      val target =
+        if lo <= 0 && 0 <= hi then 0L
+        else if hi < 0 then hi.toLong
+        else lo.toLong
+
+      Tree.unfold(value): n =>
+        LazyList
+          .iterate(n.toLong - target)(_ / 2)
+          .takeWhile(_ != 0)
+          .map(d => (n - d).toInt)
+
   /** The member `map` and `flatMap`, so the instance and the
     * for-comprehensions are one implementation
     * (docs/kernel/decisions/0009-gen-syntax-as-member-methods.md).
@@ -43,3 +74,4 @@ object Gen:
 
     override def ap[A, B](ff: Gen[A => B])(fa: Gen[A]): Gen[B] =
       ff.flatMap(f => map(fa)(f))
+end Gen
