@@ -135,6 +135,14 @@ The primitive generators are the ones the suites need, and no more: `const`,
 `oneOf`, `frequency`, `listOf` (shrinks by dropping elements, then by shrinking
 them), `option`, `either`, and `fun` (below).
 
+`bool` is uniform, ignores the size, and shrinks `true` to `false`.
+`oneOf(first, rest*)` chooses among generators, not values (a value is
+`const(a)`, and `option` and `either` need generators), so an empty `oneOf`
+does not compile. It draws the index with `choose(0, n - 1)` and binds it with
+`flatMap`, so it is uniform over the alternatives, shrinks to an earlier
+alternative first (the first one is the simplest), and then within the one
+chosen. Decided 2026-11-02.
+
 ### Fun
 
 ```scala

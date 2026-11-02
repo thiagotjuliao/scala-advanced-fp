@@ -117,4 +117,77 @@ class PrimitivesSpec extends FunSuite:
     for (lo, hi) <- ranges; seed <- seeds.take(5) do
       val tree = values(Gen.choose(lo, hi).run(seed, Size.of(0)), depth = 2)
       assertEquals(values(Gen.choose(lo, hi).run(seed, Size.of(30)), depth = 2), tree)
+
+  test("bool is uniform"):
+    val measured = histogram(Gen.bool)
+    assert(distance(measured, Map(false -> 0.5, true -> 0.5)) <= tolerance, measured.toString)
+
+  test("bool shrinks true to false, and false to nothing"):
+    assertEquals(seeds.map(Gen.bool.run(_, five).value).toSet, Set(false, true))
+    seeds.foreach: seed =>
+      val tree = Gen.bool.run(seed, five)
+      val candidates = tree.shrinks.map(c => (c.value, c.shrinks.isEmpty)).toList
+      assertEquals(candidates, if tree.value then List((false, true)) else Nil, s"at $seed")
+
+  test("bool ignores the size, and the same seed gives the same tree"):
+    seeds.foreach: seed =>
+      val tree = values(Gen.bool.run(seed, Size.of(0)), depth = 2)
+      assertEquals(values(Gen.bool.run(seed, Size.of(30)), depth = 2), tree)
+
+  private val digits = Gen.oneOf(Gen.const(0), Gen.const(1), Gen.const(2))
+
+  test("oneOf without alternatives does not compile"):
+    assertNoDiff(compileErrors("Gen.oneOf(Gen.const(1))"), "")
+    val errors = compileErrors("Gen.oneOf[Int]()")
+    assert(errors.contains("missing argument"), errors)
+
+  test("oneOf is uniform over its alternatives, not over their values"):
+    val measured = histogram(digits)
+    assert(distance(measured, (0 to 2).map(_ -> 1.0 / 3).toMap) <= tolerance, measured.toString)
+    val uneven = histogram(Gen.oneOf(Gen.const(0), Gen.choose(1, 3)))
+    val expected = Map(0 -> 0.5, 1 -> 1.0 / 6, 2 -> 1.0 / 6, 3 -> 1.0 / 6)
+    assert(distance(uneven, expected) <= tolerance, uneven.toString)
+
+  test("oneOf draws the index and the alternative from independent numbers"):
+    // choose(0, 1) and choose(0, 3) on the same seed share its low bit, so an
+    // index drawn from the alternative's seed would tie the two together.
+    val tagged = Gen.oneOf(Gen.choose(0, 3).map((0, _)), Gen.choose(0, 3).map((1, _)))
+    val uniform = (for i <- 0 to 1; v <- 0 to 3 yield (i, v) -> 1.0 / 8).toMap
+    val d = distance(histogram(tagged), uniform)
+    assert(d <= tolerance, s"distance $d from uniform")
+
+  test("oneOf of a single alternative is that alternative"):
+    seeds.foreach: seed =>
+      val tree = Gen.oneOf(Gen.const("a")).run(seed, five)
+      assertEquals((tree.value, tree.shrinks.isEmpty), ("a", true))
+
+  test("oneOf's values all come from an alternative, two levels down"):
+    val gen = Gen.oneOf(Gen.choose(10, 20), Gen.choose(100, 200))
+    seeds.foreach: seed =>
+      val stray = values(gen.run(seed, five), depth = 2)
+        .filterNot(v => (10 <= v && v <= 20) || (100 <= v && v <= 200))
+      assertEquals(stray, Nil, s"at $seed")
+
+  test("oneOf shrinks to earlier alternatives, the first one first"):
+    assertEquals(seeds.map(digits.run(_, five).value).toSet, Set(0, 1, 2))
+    seeds.foreach: seed =>
+      val tree = digits.run(seed, five)
+      val candidates = tree.shrinks.map(_.value).toList
+      val clue = s"from ${tree.value}: $candidates"
+      if tree.value == 0 then assertEquals(candidates, Nil, clue)
+      else
+        assertEquals(candidates.headOption, Some(0), clue)
+        assert(candidates.forall(_ < tree.value), clue)
+
+  test("oneOf shrinks within the chosen alternative once the earlier ones pass"):
+    val gen = Gen.oneOf(Gen.const(-1), Gen.choose(0, 1000))
+    val tree = seeds.map(gen.run(_, five)).find(_.value >= 100).get
+    assertEquals(tree.shrinks.head.value, -1)
+    assertEquals(minimise(tree, _ >= 100), 100)
+    assertEquals(minimise(tree, _ => true), -1)
+
+  test("oneOf: the same seed and size give the same tree"):
+    val gen = Gen.oneOf(Gen.choose(10, 20), Gen.choose(100, 200))
+    seeds.foreach: seed =>
+      assertEquals(values(gen.run(seed, five), depth = 2), values(gen.run(seed, five), depth = 2))
 end PrimitivesSpec

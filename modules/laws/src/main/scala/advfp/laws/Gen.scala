@@ -58,6 +58,26 @@ object Gen:
           .takeWhile(_ != 0)
           .map(d => (n - d).toInt)
 
+  /** `true` or `false`, each half the time; the size is ignored. `true`
+    * shrinks to `false`, and `false` does not shrink.
+    */
+  def bool: Gen[Boolean] =
+    choose(0, 1).map(_ == 1)
+
+  /** One of the alternatives, each as likely as the others however many
+    * values it can produce: `oneOf(const(0), choose(1, 3))` gives 0 half the
+    * time.
+    *
+    * It shrinks to an earlier alternative first, then within the one chosen,
+    * so the simplest alternative goes first. The index and the alternative
+    * draw from the two halves of a split seed, so a switch of alternative
+    * regenerates it from the same half (see `flatMap`).
+    */
+  def oneOf[A](first: Gen[A], rest: Gen[A]*): Gen[A] =
+    val gens = first +: rest
+    val genIndex = choose(0, gens.length - 1)
+    genIndex.flatMap(gens(_))
+
   /** The member `map` and `flatMap`, so the instance and the
     * for-comprehensions are one implementation
     * (docs/kernel/decisions/0009-gen-syntax-as-member-methods.md).
