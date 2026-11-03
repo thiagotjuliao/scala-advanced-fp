@@ -226,6 +226,47 @@ A property is a generator of inputs and a function from an input to a `Law`
 function throws is a failure like any other, and its input is shrunk the same
 way.
 
+```scala
+enum Verdict:
+  case Holds
+  case Fails(lhs: String, rhs: String)
+
+trait Testable[R]:
+  def verdict(r: R): Verdict
+
+object Testable:
+  given Testable[Boolean]
+  given [B] => (Eq[B]) => Testable[Law[B]]
+
+final case class Prop[A](gen: Gen[A], verdict: A => Verdict)
+
+object Prop:
+  def forAll[A, R](gen: Gen[A])(f: A => R)(using Testable[R]): Prop[A]
+```
+
+The type of a law's sides, `B`, is settled when the property is built:
+`Testable[Law[B]]` asks `holds` with the `Eq[B]` it was given, and keeps the
+sides as `toString`, which is what the report prints. So `Prop[A]` knows only
+its input, and a suite keeps properties over different sides in one
+`List[Prop[?]]`. A `Boolean` property fails with empty sides: the report
+already has the counter-example, and repeating it as a side would label it as
+half of an equation there is not.
+
+One `forAll` with a `Testable`, not two overloads, one for `Law` and one for
+`Boolean`. Those were tried first (2026-11-03): Scala picks an overload by its
+first argument list, `(gen)`, which both accept, so every call with an untyped
+lambda fails with `Ambiguous overload. The overloaded alternatives of method
+forAll in object Prop with types` ... `both match arguments`. With `Testable`,
+`A` comes from `gen`, `R` from the lambda, and a result with no instance (an
+`Int` by mistake) does not compile. `Prop[A, B]`
+would need `Eq[B]` in the runner and a suite would need the wildcard twice. An
+opaque `Prop` with the runner inside, as in ScalaCheck, could be tested only by
+running it.
+
+The runner, not `forAll`, catches what `verdict` throws, so `Prop` stays
+plain data and failures are handled in one place: the report carries the
+exception.
+
 `check(prop, config)` returns a value, not an assertion:
 
 ```scala
@@ -236,7 +277,8 @@ enum Result:
 
 A `Report` holds what is needed to understand and reproduce the failure: the
 seed and size of the failing test, the test's number, the original
-counter-example, the shrunk one, both sides of the law at the shrunk one, and
+counter-example, the shrunk one, both sides of the law at the shrunk one (or
+the exception it threw), and
 the number of shrink steps taken.
 
 `Config` holds the number of tests (default 100), `maxSize` (default 30), the
