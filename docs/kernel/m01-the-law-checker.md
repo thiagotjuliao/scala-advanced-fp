@@ -132,8 +132,8 @@ checks its own generator, which previews how M2 compares two `IO`s.
 
 The primitive generators are the ones the suites need, and no more: `const`,
 `choose(lo, hi)` for `Int` (shrinks toward the bound nearest to 0), `bool`,
-`oneOf`, `frequency`, `listOf` (shrinks by dropping elements, then by shrinking
-them), `option`, `either`, and `fun` (below).
+`oneOf`, `frequency`, `pairs`, `listOf` (shrinks by dropping elements, then by
+shrinking them), `option`, `either`, and `fun` (below).
 
 `bool` is uniform, ignores the size, and shrinks `true` to `false`.
 `oneOf(first, rest*)` chooses among generators, not values (a value is
@@ -154,6 +154,11 @@ promise that every value in the tree is one the generator produces.
 `Some` to say anything, and `either(l, r)` is `Left` half the time. Both shrink
 to `None` or `Left` first, then within the value.
 
+`pairs(a, b)` draws `a` and `b` from the two halves of a split seed, so the two
+sides are independent, and shrinks `a` first, then `b`: it is
+`a.flatMap(x => b.map((x, _)))`, so once `b` shrinks, `a` is fixed. Laws over two values, and the entries of
+`fun`, need it. Decided 2026-11-03.
+
 `listOf(g)` draws its length uniformly from 0 to the size, and each element
 from a seed of its own. It shrinks by removing elements first, in blocks whose
 length halves: the whole list (so the empty list comes first), then each block
@@ -162,10 +167,10 @@ Then it shrinks one element at a time, from left to right, through that
 element's own candidates. A 30-element list reaches a small one in a few
 steps, where removing one element at a time would take up to 30.
 
-`fun(keys, values)` is a table of `listOf` entries, each a key and a value,
-with a default from `values`. So the table has at most size entries, and it
-shrinks as a list: the empty table, the constant function, first. The default
-shrinks last. Decided 2026-11-02.
+`fun(keys, values)` is a table of `listOf` entries, each a `pairs` of a key
+and a value, with a default from `values`. So the table has at most size
+entries, and it shrinks as a list: the empty table, the constant function,
+first. The default shrinks last. Decided 2026-11-02.
 
 ### Fun
 

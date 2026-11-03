@@ -64,6 +64,15 @@ object Gen:
   def bool: Gen[Boolean] =
     choose(0, 1).map(_ == 1)
 
+  /** Both values, drawn from the two halves of a split seed, so
+    * `pairs(g, g)` gives two independent values, not the same one twice. It
+    * shrinks the first side first, then the second; the second keeps its tree
+    * while the first shrinks, but once the second shrinks the first is fixed
+    * (see `Tree`'s monad), so shrink the side that matters most first.
+    */
+  def pairs[A, B](ga: Gen[A], gb: Gen[B]): Gen[(A, B)] =
+    ga.flatMap(a => gb.map(b => (a, b)))
+
   /** One of the alternatives, each as likely as the others however many
     * values it can produce: `oneOf(const(0), choose(1, 3))` gives 0 half the
     * time.
@@ -156,6 +165,20 @@ object Gen:
 
         removals #::: shrunk
       Monad[Tree].map(res)(_.map(_.value))
+
+  /** A function as a table of at most size entries, each from `keys` and
+    * `values`, and a default from `values`; a key drawn twice keeps its last
+    * value, so the table can be smaller than the list it comes from.
+    *
+    * The table shrinks first, as `listOf` does, so the first candidate is the
+    * constant function at the same default; the default shrinks last.
+    */
+  def fun[A, B](keys: Gen[A], values: Gen[B]): Gen[Fun[A, B]] =
+    listOf(pairs(keys, values))
+      .map(_.toMap)
+      .flatMap: table =>
+        values.map: default =>
+          Fun(table, default)
 
   /** The member `map` and `flatMap`, so the instance and the
     * for-comprehensions are one implementation

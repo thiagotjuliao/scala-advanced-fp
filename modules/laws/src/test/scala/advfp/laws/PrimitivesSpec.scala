@@ -312,10 +312,48 @@ class PrimitivesSpec extends FunSuite:
     val tree = seeds.map(sides.run(_, five)).find(_.value.exists(_ >= 150)).get
     assertEquals(minimise(tree, _.exists(_ >= 150)), Right(150))
 
-  test("frequency, option and either: the same seed and size give the same tree"):
+  test("pairs draws its two sides from independent numbers, even from one generator"):
+    val quarter = Gen.choose(0, 3)
+    val uniform = (for a <- 0 to 3; b <- 0 to 3 yield (a, b) -> 1.0 / 16).toMap
+    val d = distance(histogram(Gen.pairs(quarter, quarter)), uniform)
+    assert(d <= tolerance, s"distance $d from uniform")
+
+  /** Every candidate of a pair of values from `three`, where `v` shrinks to
+    * `0 until v`: the first side's, then the second's.
+    */
+  private def bothSides(a: Int, b: Int): List[(Int, Int)] =
+    (0 until a).map((_, b)).toList ++ (0 until b).map((a, _))
+
+  test("pairs shrinks the first side first, then the second"):
+    val tree = Gen.pairs(GenSpec.three, GenSpec.three).run(seeds.head, five)
+    assertEquals(tree.value, (3, 3))
+    assertEquals(tree.shrinks.map(_.value).toList, bothSides(3, 3))
+
+  test("pairs' candidates keep the second side's tree; once it shrinks, the first is fixed"):
+    // The candidates of the second side are the trees of `b` alone (Tree's
+    // flatMap), so the first side no longer shrinks under them.
+    val candidates = Gen.pairs(GenSpec.three, GenSpec.three).run(seeds.head, five).shrinks.toList
+    val (first, second) = candidates.splitAt(3)
+    first.foreach: candidate =>
+      val (a, b) = candidate.value
+      assertEquals(candidate.shrinks.map(_.value).toList, bothSides(a, b), s"from ($a, $b)")
+    second.foreach: candidate =>
+      val (a, b) = candidate.value
+      assertEquals(candidate.shrinks.map(_.value).toList, (0 until b).map((a, _)).toList)
+
+  test("pairs' values come from their side's generator, two levels down"):
+    val gen = Gen.pairs(Gen.choose(10, 20), Gen.choose(100, 200))
+    seeds.foreach: seed =>
+      val stray = values(gen.run(seed, five), depth = 2).filterNot: (a, b) =>
+        10 <= a && a <= 20 && 100 <= b && b <= 200
+      assertEquals(stray, Nil, s"at $seed")
+
+  test("frequency, option, either and pairs: the same seed and size give the same tree"):
+    val pair = Gen.pairs(Gen.choose(0, 1000), Gen.choose(0, 1000))
     val option = Gen.option(Gen.choose(0, 1000))
     seeds.foreach: seed =>
       assertEquals(values(weighted.run(seed, five), 2), values(weighted.run(seed, five), 2))
       assertEquals(values(option.run(seed, five), 2), values(option.run(seed, five), 2))
       assertEquals(values(sides.run(seed, five), 2), values(sides.run(seed, five), 2))
+      assertEquals(values(pair.run(seed, five), 2), values(pair.run(seed, five), 2))
 end PrimitivesSpec
