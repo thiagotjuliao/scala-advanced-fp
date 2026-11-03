@@ -199,12 +199,25 @@ infinite compares a prefix, and says how long. See
 ### Law
 
 ```scala
-final case class Law[A](lhs: A, rhs: A)
+final case class Law[A](lhs: A, rhs: A):
+  def holds(using Eq[A]): Boolean
+
+extension [A](lhs: A) def <->(rhs: A): Law[A]
 ```
 
-A law is an equation, not a `Boolean`. The checker compares the two sides with
-`Eq` and, when they differ, reports both. "Associativity failed" says that
-something is wrong. The two sides say what.
+A law is an equation, not a `Boolean`. The checker asks `holds`, which
+compares the two sides with `Eq`, and when they differ, reports both.
+"Associativity failed" says that something is wrong. The two sides say what.
+`holds` is on `Law`, not in the runner, so `Law` is tested on its own, before
+`Prop` exists.
+
+`<->` builds a law, so a suite reads as the equation it checks. It is
+top-level in package `laws`: the suites and `laws`' tests see it without an
+import, and an extension in `Law`'s companion would not be found on an `Int`.
+Its precedence is that of `<`, above `|`, so a side written with `|+|` needs
+parentheses: `(a |+| b) |+| c <-> a |+| (b |+| c)` reads as
+`(a |+| b) |+| (c <-> a) |+| (b |+| c)` and does not compile
+(`Found:    advfp.laws.Law[Int]`, `Required: Int`).
 
 ### Prop, the runner and the report
 
