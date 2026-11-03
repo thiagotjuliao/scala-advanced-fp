@@ -143,6 +143,30 @@ does not compile. It draws the index with `choose(0, n - 1)` and binds it with
 alternative first (the first one is the simplest), and then within the one
 chosen. Decided 2026-11-02.
 
+`frequency(first: (Int, Gen[A]), rest: (Int, Gen[A])*)` is `oneOf` with
+weights: each alternative is drawn in proportion to its weight, and it shrinks
+the same way, to an earlier alternative first. A weight of 0 or less, or
+weights that add up to more than `Int.MaxValue`, are rejected at the call: an
+alternative never drawn could still be reached by shrinking, against the
+promise that every value in the tree is one the generator produces.
+
+`option(g)` is `None` a quarter of the time, since the laws of `Option` need
+`Some` to say anything, and `either(l, r)` is `Left` half the time. Both shrink
+to `None` or `Left` first, then within the value.
+
+`listOf(g)` draws its length uniformly from 0 to the size, and each element
+from a seed of its own. It shrinks by removing elements first, in blocks whose
+length halves: the whole list (so the empty list comes first), then each block
+of `n / 2`, `n / 4`, and so on down to single elements, from left to right.
+Then it shrinks one element at a time, from left to right, through that
+element's own candidates. A 30-element list reaches a small one in a few
+steps, where removing one element at a time would take up to 30.
+
+`fun(keys, values)` is a table of `listOf` entries, each a key and a value,
+with a default from `values`. So the table has at most size entries, and it
+shrinks as a list: the empty table, the constant function, first. The default
+shrinks last. Decided 2026-11-02.
+
 ### Fun
 
 ```scala

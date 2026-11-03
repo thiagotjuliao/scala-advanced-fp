@@ -78,6 +78,85 @@ object Gen:
     val genIndex = choose(0, gens.length - 1)
     genIndex.flatMap(gens(_))
 
+  /** One of the alternatives, each drawn in proportion to its weight:
+    * `frequency((1, a), (3, b))` gives `a` a quarter of the time.
+    *
+    * The weights choose the alternative, and do not shrink: the index shrinks
+    * as `oneOf`'s does, to an earlier alternative first, the first one first,
+    * then within the one chosen. So the simplest alternative goes first,
+    * whatever its weight.
+    *
+    * @throws IllegalArgumentException
+    *   if a weight is 0 or less, or the weights add up to more than
+    *   `Int.MaxValue`, at the call, not when the generator runs
+    */
+  def frequency[A](first: (Int, Gen[A]), rest: (Int, Gen[A])*): Gen[A] =
+    val pairs = first +: rest
+    val ws = pairs.map(_._1)
+
+    require(ws.forall(_ > 0), "weights must be positive")
+    require(ws.map(_.toLong).sum <= Int.MaxValue, s"weights cannot sum over ${Int.MaxValue}")
+
+    val sums = ws.scanLeft(0)(_ + _).tail
+
+    Gen: (seed, size) =>
+      val (s0, s1) = seed.split
+      val n = choose(1, ws.sum).run(s0, size).value
+      val i = sums.zipWithIndex.dropWhile(_._1 < n).head._2
+
+      val indices = Tree.unfold(i): j =>
+        LazyList.iterate(j)(_ / 2).takeWhile(_ != 0).map(j - _)
+      Monad[Tree].flatMap(indices)(j => pairs(j)._2.run(s1, size))
+
+  /** `None` a quarter of the time, since a law about `Option` says little on
+    * `None`. `Some` shrinks to `None` first, then within the value.
+    */
+  def option[A](ga: Gen[A]): Gen[Option[A]] =
+    frequency((1, const(None)), (3, ga.map(Some(_))))
+
+  /** `Left` half the time. `Right` shrinks to a `Left` first, then within
+    * the value; a `Left` stays a `Left`.
+    */
+  def either[E, A](ge: Gen[E], ga: Gen[A]): Gen[Either[E, A]] =
+    frequency((1, ge.map(Left(_))), (1, ga.map(Right(_))))
+
+  /** A list whose length is uniform from 0 to the size, each element from a
+    * seed of its own.
+    *
+    * It shrinks by removing elements first, in blocks whose length halves:
+    * the whole list, so the empty list is the first candidate, then each
+    * block of `n / 2`, `n / 4`, ... down to single elements, from left to
+    * right. Then each element shrinks through its own candidates, from left
+    * to right. The elements are kept with their trees, so what remains after
+    * a removal still shrinks; a `flatMap` on the length would regenerate them
+    * instead (docs/kernel/m01-the-law-checker.md#gen).
+    */
+  def listOf[A](ga: Gen[A]): Gen[List[A]] =
+    Gen: (seed, size) =>
+      val (s0, s1) = seed.split
+      val n = choose(0, size.toInt).run(s0, size).value
+      val seeds = List.iterate(s1, n)(_.split._2).map(_.split._1)
+      val trees = seeds.map(s => ga.run(s, size))
+
+      val res = Tree.unfold(trees): ts =>
+        val removals = LazyList
+          .iterate(ts.length)(_ / 2)
+          .takeWhile(_ >= 1)
+          .flatMap: k =>
+            LazyList
+              .range(0, ts.length, k)
+              .map: start =>
+                ts.take(start) ++ ts.drop(start + k)
+
+        val shrunk = LazyList
+          .range(0, ts.length)
+          .flatMap: i =>
+            ts(i).shrinks.map: t =>
+              ts.updated(i, t)
+
+        removals #::: shrunk
+      Monad[Tree].map(res)(_.map(_.value))
+
   /** The member `map` and `flatMap`, so the instance and the
     * for-comprehensions are one implementation
     * (docs/kernel/decisions/0009-gen-syntax-as-member-methods.md).
