@@ -270,26 +270,74 @@ exception.
 `check(prop, config)` returns a value, not an assertion:
 
 ```scala
-enum Result:
+final case class Config(
+    tests: Int = 100,
+    maxSize: Int = 30,
+    seed: Long = System.nanoTime(),
+    maxShrinks: Int = 1000
+)
+
+enum Failure:
+  case Unequal(lhs: String, rhs: String)
+  case Threw(error: Throwable)
+
+final case class Report[A](
+    seed: Long,
+    size: Size,
+    test: Int,
+    original: A,
+    shrunk: A,
+    failure: Failure,
+    shrinks: Int,
+    exhausted: Boolean
+)
+
+enum Result[A]:
   case Passed(tests: Int)
-  case Failed(report: Report)
+  case Failed(report: Report[A])
+
+def check[A](prop: Prop[A], config: Config = Config()): Result[A]
+def recheck[A](prop: Prop[A], seed: Long, size: Size, config: Config = Config()): Result[A]
 ```
 
 A `Report` holds what is needed to understand and reproduce the failure: the
 seed and size of the failing test, the test's number, the original
-counter-example, the shrunk one, both sides of the law at the shrunk one (or
-the exception it threw), and
-the number of shrink steps taken.
+counter-example, the shrunk one, how it fails at the shrunk one (both sides of
+the law, or the exception it threw), the number of shrink steps taken, and
+whether the shrink limit stopped it. Tests are numbered from 1, so `test` is
+the count of tests run, the failing one included. `original` and `shrunk` are values, not
+strings, so a test can say the shrink reached exactly `100`.
 
-`Config` holds the number of tests (default 100), `maxSize` (default 30), the
-seed (random unless given, so a reported seed reproduces the run), and a limit
-on shrink steps (default 1000), so a bad shrink tree cannot hang a test run.
+**Seeds.** A run starts from `Seed(config.seed)`, and test *i* gets its own
+`Seed(n)`, with `n` drawn by `next` from the run's seed. A seed made by
+`split` has a gamma of its own and cannot be rebuilt from a printed number,
+so the tests' seeds are made from a `Long` instead, and the report gives that
+`Long`. `recheck(prop, report.seed, report.size)` runs that one test again and
+shrinks it again, without running the ones before it.
+
+**Sizes.** Test *i*, from 0 to `tests - 1`, has size
+`i * (maxSize + 1) / tests`: the sizes from 0 to `maxSize` are spread evenly
+over the run, and the first test is always of size 0.
+
+**Defaults.** 100 tests, `maxSize` 30, and at most 1000 shrink candidates
+tried. `Config` rejects fewer than one test, and a negative `maxSize` or
+shrink limit, when it is built rather than in the middle of a run. The seed defaults to `System.nanoTime()`, evaluated at each `Config()`,
+so `check` stays a pure function of the property and the configuration, and
+the one impure choice is made where it shows and reported where it is needed.
 
 **Shrinking** is greedy: from the failing node, take the first candidate that
 still fails, and repeat until none does or the limit is reached. Greedy does
 not always find the global minimum, but it is predictable, and the order of
 candidates (most aggressive first: the origin, then halves) gets close in
-practice.
+practice. Any failure counts as still failing, so an input that fails by
+inequality may shrink to one that throws. The limit counts candidates tried,
+not steps taken: a node with endlessly many candidates that pass would never
+take a step, and that is what the limit is there to stop. `shrinks` in the
+report counts the steps, the path to the minimum, and `exhausted` says the
+limit stopped the shrink before it reached one.
+
+**Exceptions.** The runner catches `NonFatal` only. An `OutOfMemoryError` or
+an interruption is not a counter-example.
 
 ## The law suites
 
