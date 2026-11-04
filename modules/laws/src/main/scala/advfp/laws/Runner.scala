@@ -72,7 +72,7 @@ object Runner:
 
     @scala.annotation.tailrec
     def loop(test: Int, seed: Seed): Result[A] =
-      val size = (test - 1) * (maxSize + 1) / tests
+      val size = ((test - 1L) * (maxSize + 1L) / tests).toInt
       val (long, _seed) = seed.next
 
       runTest(prop, long, Size.of(size), test, maxShrinks) match

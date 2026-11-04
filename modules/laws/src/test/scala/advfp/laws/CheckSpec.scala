@@ -41,6 +41,15 @@ class CheckSpec extends FunSuite:
     (0 to 30).foreach: k =>
       assertEquals(failed(check(forAll(sizes)(_ < k), one)).test, k + 1, s"size $k")
 
+  test("the size formula does not overflow, though its product passes Int.MaxValue"):
+    // 99999 * 30001 is about 3 * 10^9.
+    val many = Config(tests = 100000, maxSize = 30000, seed = 42)
+    assertEquals(check(forAll(sizes)(_ <= 30000), many), Result.Passed(100000))
+    assertEquals(failed(check(forAll(sizes)(_ < 30000), many)).size, Size.of(30000))
+    // maxSize + 1 itself passes Int.MaxValue: test 2 of 2 has size 2^31 / 2.
+    val largest = Config(tests = 2, maxSize = Int.MaxValue, seed = 42)
+    assertEquals(failed(check(forAll(sizes)(_ < 1), largest)).size, Size.of(1 << 30))
+
   test("a law that fails reports both sides at the shrunk input"):
     val report = failed(check(forAll(Gen.choose(0, 1000))(x => (x min 100) <-> x), fixed))
     assertEquals(report.shrunk, 101)
