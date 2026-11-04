@@ -15,12 +15,32 @@ trait PropAssertions:
   def assertHolds[A](prop: Prop[A], config: Config = Config())(using Location): Unit =
     Runner.check(prop, config) match
       case Result.Passed(_) => ()
-      case Result.Failed(report) =>
-        report.failure match
-          case Failure.Threw(error) => fail(PropAssertions.describe(report), error)
-          case Failure.Unequal(_, _) => fail(PropAssertions.describe(report))
+      case Result.Failed(report) => failWith(PropAssertions.describe(report), report)
+
+  /** Every law of the suite and of its parents; the message starts with the
+    * name of the first one that failed.
+    */
+  def assertSuite(suite: Suite, config: Config = Config())(using Location): Unit =
+    PropAssertions
+      .failures(suite, config)
+      .headOption
+      .foreach: (law, report) =>
+        failWith(s"$law\n${PropAssertions.describe(report)}", report)
+
+  private def failWith(message: String, report: Report[?])(using Location): Unit =
+    report.failure match
+      case Failure.Threw(error) => fail(message, error)
+      case Failure.Unequal(_, _) => fail(message)
+end PropAssertions
 
 object PropAssertions:
+  /** Each law of the suite and of its parents that fails, in `all`'s order. */
+  def failures(suite: Suite, config: Config = Config()): List[(String, Report[?])] =
+    suite.all.flatMap: (law, prop) =>
+      Runner.check(prop, config) match
+        case Result.Passed(_) => None
+        case Result.Failed(report) => Some(law -> report)
+
   /** Named lines, where `Report`'s `toString` is eight values by position.
     * Sides are left out when both are empty, as a `Boolean` property's are.
     */

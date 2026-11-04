@@ -49,6 +49,45 @@ class PropAssertionsSpec extends FunSuite with PropAssertions:
     val failure = failureOf(forAll(Gen.const(1))(_ <-> 2), fixed)
     assertEquals(failure.getCause, null)
 
+  /** As `failureOf`: not inline, so the message cannot quote the assertions. */
+  private def suiteFailureOf(suite: Suite, config: Config): FailException =
+    intercept[FailException](assertSuite(suite, config))
+
+  private val holds = Prop.forAll(Gen.const(1))(_ => true)
+
+  test("a suite that holds does not fail the test"):
+    assertSuite(Suite("S", Nil, List("a" -> holds)), fixed)
+
+  test("a suite that fails names the first law that failed, then its report"):
+    val breaks = Prop.forAll(Gen.const(1))(_ <-> 2)
+    val alsoBreaks = Prop.forAll(Gen.const(3))(_ <-> 4)
+    val parent = Suite("P", Nil, List("fine" -> holds, "first" -> breaks))
+    val suite = Suite("S", List(parent), List("second" -> alsoBreaks))
+    val message = suiteFailureOf(suite, fixed).getMessage
+    assert(message.contains("P: first\nfailed at test 1"), message)
+    assert(message.contains("lhs:      1"), message)
+    assert(!message.contains("S: second"), message)
+
+  test("a suite keeps what its law threw as the failure's cause"):
+    val error = IllegalStateException("boom")
+    val throws = Prop.forAll(Gen.const(1))(_ => throw error)
+    val failure = suiteFailureOf(Suite("S", Nil, List("a" -> throws)), fixed)
+    assertEquals(failure.getCause, error)
+
+  test("failures lists every law that fails, in order, and only those"):
+    val one = Prop.forAll(Gen.const(1))(_ <-> 2)
+    val two = Prop.forAll(Gen.const(3))(_ <-> 4)
+    val suite = Suite("S", Nil, List("a" -> one, "b" -> holds, "c" -> two))
+    assertEquals(PropAssertions.failures(suite, fixed).map(_._1), List("S: a", "S: c"))
+
+  test("assertSuite and failures run with the config they are given"):
+    val prop = Prop.forAll(Gen.choose(0, 1000))(_ < 100)
+    val suite = Suite("S", Nil, List("a" -> prop))
+    val limited = fixed.copy(maxShrinks = 0)
+    assert(PropAssertions.failures(suite, limited).forall(_._2.exhausted))
+    val message = suiteFailureOf(suite, limited).getMessage
+    assert(message.contains("stopped by the limit"), message)
+
   test("a law's report names every field, with lhs before rhs"):
     assertNoDiff(
       describe(report(Failure.Unequal("100", "101"))),

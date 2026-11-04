@@ -359,9 +359,41 @@ cannot behave differently on `Int` than elsewhere (chapter 01, exercise 04).
 | Monad | left identity, right identity, associativity; `ap` agrees with `flatMap` |
 | Traverse | identity (`traverse` in `Id` is `map`), composition (in `Nested[Option, List]`), naturality restricted to `Option → List`; `foldLeft` agrees with `traverse` in `Const` |
 
-What a suite asks for is the instance, plus `Gen` and `Eq` for each type it
-quantifies over: `Gen[F[Int]]`, `Eq[F[Int]]`, and for `Traverse`, `Eq` of the
-composed results.
+```scala
+final case class Suite(name: String, parents: List[Suite], laws: List[(String, Prop[?])]):
+  def all: List[(String, Prop[?])]
+
+object Suite:
+  def semigroup[A: Semigroup: Eq](as: Gen[A]): Suite
+  def monoid[A: Monoid: Eq](as: Gen[A]): Suite
+  def functor[F[_]: Functor](lift: [X] => Gen[X] => Gen[F[X]])(using Eq[F[Int]]): Suite
+  def applicative[F[_]: Applicative](lift: [X] => Gen[X] => Gen[F[X]])(using Eq[F[Int]]): Suite
+  def monad[F[_]: Monad](lift: [X] => Gen[X] => Gen[F[X]])(using Eq[F[Int]]): Suite
+```
+
+`all` gives the parents' laws first, without repeating one, each named with its
+suite as `Monad: associativity`, so a report names the law that failed. The
+suites are named as in the table above, and the laws too:
+`Applicative: map agrees with pure(f).ap`, `Monad: ap agrees with flatMap`.
+
+What a suite asks for is the instance, plus `Eq` for what it compares, and a
+generator for what it quantifies over. For a type constructor that generator
+is `lift`, polymorphic in the element, not a `Gen[F[Int]]`: the composition law
+of `Applicative` needs an `F[Int => Int]`, which a `Gen[F[Int]]` cannot produce.
+`[X] => (g: Gen[X]) => Gen.listOf(g)` is `List`'s, and the same with
+`Gen.option` is `Option`'s. Decided 2026-11-04, correcting the first draft, which asked for
+`Gen[F[Int]]`. The signature of `Traverse`'s suite waits for `Id`, `Const` and
+`Nested`; it also needs `Eq` of the composed results.
+
+Each law is written in an object for its typeclass, `SemigroupLaws.associativity`,
+which returns its name with its property, `(String, Prop[(A, A, A)])`. The objects
+keep apart the names the table repeats, `associativity` of `Semigroup` and of
+`Monad`, and a function in `Suite` only assembles: name, parents, laws. The name
+travels with the law, so a list cannot pair one with another's property. The
+alternative was laws as bare equations, `associativity(a, b, c): Law[A]`, with
+generators and names in the suite, as Cats has them. That split pays when the
+laws are reused by other test frameworks; here there is one runner. The objects
+are `private[laws]`: `Suite` stays the public surface. Decided 2026-11-04.
 
 `Id`, `Const` and `Nested` are used by the Traverse suite only, so they live in
 `laws`, not in `typeclasses`. Chapter 09 makes `Const` the subject of a chapter.
