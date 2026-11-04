@@ -93,7 +93,10 @@ class CheckSpec extends FunSuite:
     assert(report.exhausted)
 
   test("what a property throws is a failure, and its input is shrunk"):
-    val report = failed(check(forAll(Gen.choose(0, 1000))(x => 1000 / (x - 500) < 1000), fixed))
+    // Every x from 500 up fails, so a run is sure to find one: only 500 throws,
+    // and it is the edge the shrink has to reach.
+    val report =
+      failed(check(forAll(Gen.choose(0, 1000))(x => x < 500 || 1000 / (x - 500) < 0), fixed))
     assertEquals(report.shrunk, 500)
     report.failure match
       case Failure.Threw(_: ArithmeticException) => ()
@@ -108,9 +111,14 @@ class CheckSpec extends FunSuite:
     assert(report.failure.isInstanceOf[Failure.Threw], report.failure)
 
   test("a fatal error is not a counter-example: it escapes check"):
-    intercept[LinkageError](
-      check(forAll(Gen.choose(0, 10))(_ => throw LinkageError("fatal")), fixed)
-    )
+    // Not `intercept`: munit's catches `NonFatal` only, so a fatal error goes
+    // through it and aborts the suite, with the tests after it skipped.
+    val escaped =
+      try
+        check(forAll(Gen.choose(0, 10))(_ => throw LinkageError("fatal")), fixed)
+        false
+      catch case _: LinkageError => true
+    assert(escaped, "check swallowed a fatal error")
 
   test("the same config gives the same result, and another seed another run"):
     val prop = forAll(Gen.choose(0, 1000))(_ < 100)
