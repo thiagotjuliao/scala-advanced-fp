@@ -92,6 +92,16 @@ class CheckSpec extends FunSuite:
     assertEquals(report.shrinks, 0)
     assert(report.exhausted)
 
+  test("a shrink that runs out of candidates at the limit is not exhausted"):
+    val leaf = Gen((_, _) => Tree(7, LazyList.empty))
+    assert(!failed(check(forAll(leaf)(_ => false), fixed.copy(maxShrinks = 0))).exhausted)
+    val chain =
+      Gen((_, _) => Tree.unfold(0)(n => if n < 10 then LazyList(n + 1) else LazyList.empty))
+    val atLimit = failed(check(forAll(chain)(_ => false), fixed.copy(maxShrinks = 10)))
+    assertEquals((atLimit.shrunk, atLimit.exhausted), (10, false))
+    val shortOf = failed(check(forAll(chain)(_ => false), fixed.copy(maxShrinks = 9)))
+    assertEquals((shortOf.shrunk, shortOf.exhausted), (9, true))
+
   test("what a property throws is a failure, and its input is shrunk"):
     // Every x from 500 up fails, so a run is sure to find one: only 500 throws,
     // and it is the edge the shrink has to reach.
@@ -139,6 +149,14 @@ class CheckSpec extends FunSuite:
       val again = failed(recheck(prop, report.seed, report.size))
       assertEquals((again.original, again.shrunk), (report.original, report.shrunk))
       assertEquals((again.seed, again.size), (report.seed, report.size))
+
+  test("recheck numbers its test 1, and keeps to the config's shrink limit"):
+    val prop = forAll(Gen.choose(0, 1000))(_ < 100)
+    val report = failed(check(prop, Config(tests = 1000, maxSize = 30, seed = 42)))
+    val again = failed(recheck(prop, report.seed, report.size, fixed.copy(maxShrinks = 0)))
+    assertEquals(again.test, 1)
+    assertEquals(again.shrunk, report.original)
+    assert(again.exhausted)
 
   test("recheck of a test that passes passes one test"):
     assertEquals(recheck(forAll(Gen.choose(0, 10))(_ => true), 7L, Size.of(3)), Result.Passed(1))

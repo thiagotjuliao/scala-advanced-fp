@@ -1,5 +1,15 @@
 package advfp.laws
 
+/** How `check` runs (docs/kernel/m01-the-law-checker.md#prop-the-runner-and-the-report).
+  *
+  * `seed` defaults to `System.nanoTime()`, evaluated at each `Config()`: the
+  * one impure choice, made here so `check` stays a pure function of the
+  * property and the configuration. `maxShrinks` limits the candidates tried,
+  * not the steps taken.
+  *
+  * @throws IllegalArgumentException
+  *   if `tests` is not positive, or `maxSize` or `maxShrinks` is negative
+  */
 final case class Config(
     tests: Int = 100,
     maxSize: Int = 30,

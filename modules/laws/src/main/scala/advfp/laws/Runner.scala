@@ -63,6 +63,10 @@ object Runner:
           Report(seed, size, test, tree.value, value, smaller, steps, exhausted)
         )
 
+  /** Runs up to `config.tests` tests with sizes rising from 0 to
+    * `config.maxSize`, stops at the first failure and shrinks it. A `NonFatal`
+    * exception from the property is a failure; a fatal one escapes.
+    */
   def check[A](prop: Prop[A], config: Config = Config()): Result[A] =
     val Config(tests, maxSize, seed, maxShrinks) = config
 
@@ -77,6 +81,9 @@ object Runner:
         case _ => loop(test + 1, _seed)
     loop(1, Seed(seed))
 
+  /** Runs one test again from a report's `seed` and `size`, and shrinks it
+    * again. The test is numbered 1, and `config` gives only the shrink limit.
+    */
   def recheck[A](prop: Prop[A], seed: Long, size: Size, config: Config = Config()): Result[A] =
     val Config(_, _, _, maxShrinks) = config
     runTest(prop, seed, size, 1, maxShrinks).fold(Passed(1))(Failed(_))
