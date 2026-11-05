@@ -385,6 +385,24 @@ of `Applicative` needs an `F[Int => Int]`, which a `Gen[F[Int]]` cannot produce.
 `Gen[F[Int]]`. The signature of `Traverse`'s suite waits for `Id`, `Const` and
 `Nested`; it also needs `Eq` of the composed results.
 
+The suites over a type constructor draw the elements, and the keys and values
+of the functions, from one small range, `Gen.choose(-5, 5)`. A `Fun` is a table
+of at most size entries plus a default, so in a wide range its keys almost never
+meet the elements, and it acts as the constant function at its default. After a
+constant function every element is equal, and a wrong instance can hide. Measured
+on 2026-11-04 with `FunctorLaws.composition` over `List`, 20 seeds, the default
+`Config`, against a functor that reverses the list:
+
+| range | lawful functor fails | reversing functor fails |
+| --- | --- | --- |
+| `-5..5` | 0 of 20 | 20 of 20 |
+| `-1000..1000` | 0 of 20 | 0 of 20 |
+| `-1000000..1000000` | 0 of 20 | 0 of 20 |
+
+So widening the range does not add coverage: it switches the law off, and the run
+stays green. Identity still catches this functor at any range, since it takes no
+function, so the range protects what only the laws over functions can see.
+
 Each law is written in an object for its typeclass, `SemigroupLaws.associativity`,
 which returns its name with its property, `(String, Prop[(A, A, A)])`. The objects
 keep apart the names the table repeats, `associativity` of `Semigroup` and of
