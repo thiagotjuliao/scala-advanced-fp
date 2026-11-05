@@ -11,6 +11,8 @@ package advfp.laws
 final case class Fun[A, B](table: Map[A, B], default: B):
   def apply(a: A): B = table.getOrElse(a, default)
 
+  val curried: A => B = a => apply(a)
+
   /** The entries in the table's order, then the default:
     * `{1 -> 2, 2 -> 3, _ -> 5}`.
     */
