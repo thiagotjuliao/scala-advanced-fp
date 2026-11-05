@@ -78,4 +78,32 @@ object Suite:
         MonadLaws.associativity(fas, ffs_) ::
         MonadLaws.apAndFlatMap(fas, ffs) :: Nil
     )
+
+  /** `composition` runs on inputs of size at most 8, whatever the `Config`:
+    * traversing in `List` multiplies the lengths of what each element gives,
+    * so its result grows exponentially with the size of `fa`. The other laws run
+    * at the full size.
+    */
+  def traverse[F[_]: Traverse](lift: [X] => Gen[X] => Gen[F[X]])(using Eq[F[Int]]): Suite =
+    val fas = lift[Int](ints)
+    val fasLimited = Gen((seed, size) => fas.run(seed, Size.of(math.min(size.toInt, 8))))
+    val fop = Gen.fun(ints, Gen.option(ints))
+
+    val fls = Gen.fun(
+      ints,
+      Gen.oneOf(
+        Gen.const(List.empty[Int]),
+        ints.map(List(_)),
+        Gen.pairs(ints, ints).map((a, b) => List(a, b))
+      )
+    )
+
+    Suite(
+      name = "Traverse",
+      parents = functor(lift) :: Nil,
+      laws = TraverseLaws.identity(fas, fs) ::
+        TraverseLaws.composition(fasLimited, fop, fls) ::
+        TraverseLaws.naturality(fas, fop) ::
+        TraverseLaws.foldLeftAndTraverse(fas) :: Nil
+    )
 end Suite

@@ -369,6 +369,7 @@ object Suite:
   def functor[F[_]: Functor](lift: [X] => Gen[X] => Gen[F[X]])(using Eq[F[Int]]): Suite
   def applicative[F[_]: Applicative](lift: [X] => Gen[X] => Gen[F[X]])(using Eq[F[Int]]): Suite
   def monad[F[_]: Monad](lift: [X] => Gen[X] => Gen[F[X]])(using Eq[F[Int]]): Suite
+  def traverse[F[_]: Traverse](lift: [X] => Gen[X] => Gen[F[X]])(using Eq[F[Int]]): Suite
 ```
 
 `all` gives the parents' laws first, without repeating one, each named with its
@@ -382,8 +383,7 @@ is `lift`, polymorphic in the element, not a `Gen[F[Int]]`: the composition law
 of `Applicative` needs an `F[Int => Int]`, which a `Gen[F[Int]]` cannot produce.
 `[X] => (g: Gen[X]) => Gen.listOf(g)` is `List`'s, and the same with
 `Gen.option` is `Option`'s. Decided 2026-11-04, correcting the first draft, which asked for
-`Gen[F[Int]]`. The signature of `Traverse`'s suite waits for `Id`, `Const` and
-`Nested`; it also needs `Eq` of the composed results.
+`Gen[F[Int]]`.
 
 The suites over a type constructor draw the elements, and the keys and values
 of the functions, from one small range, `Gen.choose(-5, 5)`. A `Fun` is a table
@@ -425,6 +425,43 @@ are `private[laws]`: `Suite` stays the public surface. Decided 2026-11-04.
 `Id`, `Const` and `Nested` are used by the Traverse suite only, so they live in
 `laws`, not in `typeclasses`. Chapter 09 makes `Const` the subject of a chapter.
 Here it is just a helper.
+
+| type | shape | `Applicative` |
+| --- | --- | --- |
+| `Id[A]` | the alias `type Id[A] = A` | `pure` is the value, `ap` applies the function |
+| `Const[M, A]` | a case class with `value: M`, where `A` is phantom | needs `Monoid[M]`: `pure` is `empty`, `ap` combines the function's `M` first, so effects run left to right |
+| `Nested[G, H, A]` | a case class with `value: G[H[A]]` | needs both applicatives: `G`'s `ap`, with `H`'s inside |
+
+`Id` is an alias so that its result is `F[Int]` itself, with no `.value`; the
+compiler cannot infer `G = Id`, so each call names it.
+
+The laws are named `identity`, `composition`, `naturality` and `foldLeft agrees
+with traverse`, with `Functor` as the only parent: `Foldable` has no suite of its
+own. The functions are `Fun[Int, Option[Int]]` and `Fun[Int, List[Int]]`.
+
+| law | one side | the other |
+| --- | --- | --- |
+| identity | `traverse` in `Id` with `f` | `map` with `f` |
+| composition | `traverse` in `Nested[Option, List, _]` with `f` then `g`, then `.value` | `traverse` with `f`, then `.map` of `traverse` with `g` |
+| naturality | `traverse` in `Option` with `f`, then `.toList` | `traverse` in `List` with `f(a).toList` |
+| `foldLeft` agrees with `traverse` | `traverse` in `Const[List[Int], _]` with `a => Const(List(a))`, then `.value` | `foldLeft` from the empty list, appending |
+
+The suite asks for no more `Eq` than the others: the composed results are
+`Option[List[F[Int]]]` and `List[F[Int]]`, which the `Eq` of `Option` and `List`
+derive from `Eq[F[Int]]`. Naturality is restricted to `toList`, a morphism of
+applicatives, so that one case does not ask for a `~>` type. `Const` gathers a
+`List[Int]`, not a sum, because a sum cannot see the order: a `foldLeft` that
+walked from the right would agree with it. Decided 2026-11-05.
+
+As in the other suites, the functions must have effects. `f` gives `None` sometimes
+and `g` lists of 0 to 2 elements: with only `Some`s and one-element lists, a
+`traverse` that skips the `None`s in `Option` and one that keeps a single result
+in `List` passed on 20 of 20 seeds, and with these both fail on 20 of 20. Then
+`composition` needs a limit: `traverse` in `List` multiplies the lengths, so a
+`fa` of 30 elements, the default `maxSize`, could give 2^30 results. It is capped at
+size 8, on `fa` only; `naturality` needs no cap, since `toList` of an `Option` has
+at most one element. Measured on 2026-11-05: at caps of 4, 6 and 8, 20 seeds take
+under 100 ms, and the fixtures are caught at each. The uncapped case was not run.
 
 ## Boundaries
 

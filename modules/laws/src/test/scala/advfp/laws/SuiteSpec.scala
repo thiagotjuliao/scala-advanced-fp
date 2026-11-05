@@ -32,6 +32,13 @@ class SuiteSpec extends FunSuite with PropAssertions:
     "Monad: ap agrees with flatMap"
   )
 
+  private val traverseLaws = functorLaws ++ List(
+    "Traverse: identity",
+    "Traverse: composition",
+    "Traverse: naturality",
+    "Traverse: foldLeft agrees with traverse"
+  )
+
   private def names(suite: Suite): List[String] = suite.all.map(_._1)
 
   /** The laws `suite` breaks on any of the seeds, in the order `all` has them. */
@@ -81,6 +88,7 @@ class SuiteSpec extends FunSuite with PropAssertions:
     assertEquals(names(Suite.functor[List](lists)), functorLaws)
     assertEquals(names(Suite.applicative[List](lists)), applicativeLaws)
     assertEquals(names(Suite.monad[List](lists)), monadLaws)
+    assertEquals(names(Suite.traverse[List](lists)), traverseLaws)
 
   test("the lawful applicatives pass, where the order of effects shows"):
     seeds.foreach: config =>
@@ -97,6 +105,8 @@ class SuiteSpec extends FunSuite with PropAssertions:
       assertSuite(Suite.monad[Option](options), config)
       assertSuite(Suite.monad[List](lists), config)
       assertSuite(Suite.monad[OrInt](eithers), config)
+      assertSuite(Suite.traverse[List](lists), config)
+      assertSuite(Suite.traverse[Option](options), config)
 
   test("subtraction breaks associativity, at a = 0, b = 0, c = ±1"):
     given Semigroup[Int] = subtraction
@@ -181,6 +191,31 @@ class SuiteSpec extends FunSuite with PropAssertions:
     val found = broken(Suite.monad[List](lists))
     assert(found.contains("Monad: right identity"), found)
     assert(!found.contains("Monad: left identity"), found)
+
+  test("a traverse that drops the last element breaks identity, on one element"):
+    given Traverse[List] = dropsTheLast
+    val suite = Suite.traverse[List](lists)
+    assert(broken(suite).contains("Traverse: identity"), broken(suite))
+    reports(suite, "Traverse: identity").foreach: report =>
+      assertEquals(lengths(report), List(1), report)
+
+  test("a traverse with its effects from the right breaks only foldLeft's agreement"):
+    given Traverse[List] = effectsFromTheRight
+    assertEquals(
+      broken(Suite.traverse[List](lists)),
+      List("Traverse: foldLeft agrees with traverse")
+    )
+
+  test("a traverse that keeps one result in List breaks composition"):
+    given Traverse[List] = firstResultInList
+    val found = broken(Suite.traverse[List](lists))
+    assert(found.contains("Traverse: composition"), found)
+
+  test("a traverse that skips the Nones in Option breaks naturality"):
+    given Traverse[List] = skipsTheNones
+    val found = broken(Suite.traverse[List](lists))
+    assert(found.contains("Traverse: naturality"), found)
+    assert(!found.contains("Traverse: identity"), found)
 
   test("a ZipList with a one-element pure breaks identity, on two elements"):
     given Applicative[ZipList] = onePure

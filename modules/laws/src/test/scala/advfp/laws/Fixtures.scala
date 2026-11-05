@@ -104,6 +104,47 @@ object Fixtures:
     override def flatMap[A, B](fa: List[A])(f: A => List[B]): List[B] =
       fa.take(1).flatMap(f)
 
+  /** `List`'s lawful traversal, for the fixtures below to change one thing in. */
+  private class ListTraversal extends Traverse[List]:
+    override def map[A, B](fa: List[A])(f: A => B): List[B] = fa.map(f)
+    override def foldLeft[A, B](fa: List[A])(z: B)(f: (B, A) => B): B = fa.foldLeft(z)(f)
+    override def traverse[G[_]: Applicative, A, B](fa: List[A])(f: A => G[B]): G[List[B]] =
+      Traverse[List].traverse(fa)(f)
+
+  /** Loses the last element, in every applicative. */
+  val dropsTheLast: Traverse[List] = new ListTraversal:
+    override def traverse[G[_]: Applicative, A, B](fa: List[A])(f: A => G[B]): G[List[B]] =
+      super.traverse(fa.dropRight(1))(f)
+
+  /** Walks with the effects from the right, keeping the shape. That is a lawful
+    * traversal in its own right: only `foldLeft`'s agreement sees it.
+    */
+  val effectsFromTheRight: Traverse[List] = new ListTraversal:
+    override def traverse[G[_]: Applicative, A, B](fa: List[A])(f: A => G[B]): G[List[B]] =
+      fa.foldRight(Applicative[G].pure(List.empty[B])): (a, gbs) =>
+        Applicative[G].map2(gbs, f(a))((bs, b) => b :: bs)
+
+  /** Keeps one result when `G` is `List`, so it only shows when an `f` gives two
+    * elements somewhere: a generator of one-element lists never sees it. Looks
+    * at `G` at run time, which a lawful traversal has no way to want.
+    */
+  val firstResultInList: Traverse[List] = new ListTraversal:
+    override def traverse[G[_]: Applicative, A, B](fa: List[A])(f: A => G[B]): G[List[B]] =
+      val walked = super.traverse(fa)(f)
+      (walked: Any) match
+        case results: List[?] => results.take(1).asInstanceOf[G[List[B]]]
+        case _ => walked
+
+  /** Skips the `None`s when `G` is `Option`, so it only shows when an `f` gives
+    * `None` somewhere: a generator of `Some`s never sees it.
+    */
+  val skipsTheNones: Traverse[List] = new ListTraversal:
+    override def traverse[G[_]: Applicative, A, B](fa: List[A])(f: A => G[B]): G[List[B]] =
+      (Applicative[G].pure(()): Any) match
+        case _: Option[?] =>
+          Some(fa.flatMap(a => (f(a): Any).asInstanceOf[Option[B]])).asInstanceOf[G[List[B]]]
+        case _ => super.traverse(fa)(f)
+
   /** `LazyList`, since a lawful `pure` for it is infinite (chapter 02, exercise
     * 04). Not a case class's `==`, which would never finish on one: `prefix`
     * is what it is compared by, and its `toString` prints that prefix.
