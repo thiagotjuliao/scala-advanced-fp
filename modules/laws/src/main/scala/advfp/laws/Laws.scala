@@ -50,28 +50,29 @@ private[laws] object ApplicativeLaws:
   def identity[F[_]: Applicative](fas: Gen[F[Int]])(using
       Eq[F[Int]]
   ): (String, Prop[F[Int]]) =
-    val ff: F[Int => Int] = Applicative[F].pure(a => a)
 
     "identity" ->
       Prop.forAll(fas): fa =>
+        val ff: F[Int => Int] = Applicative[F].pure(a => a)
         Applicative[F].ap(ff)(fa) <-> fa
 
-  def composition[F[_]: Applicative](fas: Gen[F[Int]], fs: Gen[Fun[Int, Int]])(using
+  def composition[F[_]: Applicative](fas: Gen[F[Int]], ffs: Gen[F[Fun[Int, Int]]])(using
       Eq[F[Int]]
-  ): (String, Prop[(F[Int], Fun[Int, Int], Fun[Int, Int])]) =
+  ): (String, Prop[(F[Int], F[Fun[Int, Int]], F[Fun[Int, Int]])]) =
     val gen =
       for
         fa <- fas
-        f <- fs
-        g <- fs
-      yield (fa, f, g)
+        ff <- ffs
+        fg <- ffs
+      yield (fa, ff, fg)
 
     "composition" ->
-      Prop.forAll(gen): (fa, f, g) =>
-        val ff = Applicative[F].pure(f.curried)
-        val fg = Applicative[F].pure(g.curried)
-        val ffog = Applicative[F].pure(f.curried andThen g.curried)
-        fg.ap(ff.ap(fa)) <-> ffog.ap(fa)
+      Prop.forAll(gen): (fa, ff, fg) =>
+        val ff_ = Applicative[F].map(ff)(_.apply)
+        val fg_ = Applicative[F].map(fg)(_.apply)
+        val compose: F[(Int => Int) => (Int => Int) => (Int => Int)] =
+          Applicative[F].pure(g => f => g compose f)
+        fg_.ap(ff_.ap(fa)) <-> compose.ap(fg_).ap(ff_).ap(fa)
 
   def homomorphism[F[_]: Applicative](as: Gen[Int], fs: Gen[Fun[Int, Int]])(using
       Eq[F[Int]]
@@ -84,25 +85,25 @@ private[laws] object ApplicativeLaws:
 
     "homomorphism" ->
       Prop.forAll(gen): (a, f) =>
-        val ff = Applicative[F].pure(f.curried)
+        val ff = Applicative[F].pure(f(_))
         val fa = Applicative[F].pure(a)
         ff.ap(fa) <-> Applicative[F].pure(f(a))
 
-  def interchange[F[_]: Applicative](as: Gen[Int], fs: Gen[Fun[Int, Int]])(using
+  def interchange[F[_]: Applicative](as: Gen[Int], ffs: Gen[F[Fun[Int, Int]]])(using
       Eq[F[Int]]
-  ): (String, Prop[(Int, Fun[Int, Int])]) =
+  ): (String, Prop[(Int, F[Fun[Int, Int]])]) =
     val gen =
       for
         a <- as
-        f <- fs
-      yield (a, f)
+        ff <- ffs
+      yield (a, ff)
 
     "interchange" ->
-      Prop.forAll(gen): (a, f) =>
+      Prop.forAll(gen): (a, ff) =>
         val fa = Applicative[F].pure(a)
+        val ff_ = Applicative[F].map(ff)(_.apply)
         val ffa: F[(Int => Int) => Int] = Applicative[F].pure(f => f(a))
-        val ff = Applicative[F].pure(f.curried)
-        ff.ap(fa) <-> ffa.ap(ff)
+        ff_.ap(fa) <-> ffa.ap(ff_)
 
   def mapAndPure[F[_]: Applicative](fas: Gen[F[Int]], fs: Gen[Fun[Int, Int]])(using
       Eq[F[Int]]
@@ -115,6 +116,5 @@ private[laws] object ApplicativeLaws:
 
     "map agrees with pure(f).ap" ->
       Prop.forAll(gen): (fa, f) =>
-        Applicative[F].map(fa)(f.curried) <->
-          Applicative[F].pure(f.curried).ap(fa)
+        Applicative[F].map(fa)(f(_)) <-> Applicative[F].pure(f(_)).ap(fa)
 end ApplicativeLaws

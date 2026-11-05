@@ -78,6 +78,12 @@ class SuiteSpec extends FunSuite with PropAssertions:
     assertEquals(names(Suite.applicative[List](lists)), applicativeLaws)
     assertEquals(names(Suite.monad[List](lists)), monadLaws)
 
+  test("the lawful applicatives pass, where the order of effects shows"):
+    seeds.foreach: config =>
+      assertSuite(Suite.applicative[Option](options), config)
+      assertSuite(Suite.applicative[List](lists), config)
+      assertSuite(Suite.applicative[OrInt](eithers), config)
+
   test("the lawful instances pass, on the suite of everything they are"):
     seeds.foreach: config =>
       assertSuite(Suite.semigroup(ints), config)
@@ -139,6 +145,16 @@ class SuiteSpec extends FunSuite with PropAssertions:
     assertEquals(broken(suite), List("Monad: ap agrees with flatMap"))
     reports(suite, "Monad: ap agrees with flatMap").foreach: report =>
       assertEquals(lengths(report), List(2, 2), report)
+
+  test("a List ap that uses only the first function is caught by interchange"):
+    given Applicative[List] = usesTheFirstFunction
+    assert(broken(Suite.applicative[List](lists)).contains("Applicative: interchange"))
+
+  test("a List ap that reverses the functions is caught by interchange and composition"):
+    given Applicative[List] = reversesTheFunctions
+    val found = broken(Suite.applicative[List](lists))
+    assert(found.contains("Applicative: interchange"), found)
+    assert(found.contains("Applicative: composition"), found)
 
   test("a ZipList with a one-element pure breaks identity, on two elements"):
     given Applicative[ZipList] = onePure

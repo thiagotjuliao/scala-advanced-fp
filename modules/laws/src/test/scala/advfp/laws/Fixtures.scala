@@ -55,6 +55,20 @@ object Fixtures:
     override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
       fa.flatMap(a => ff.map(_(a)))
 
+  /** Lawful as long as `ff` comes from `pure`, which has one function: only a
+    * law with a generated `F[Int => Int]` can see that the others are dropped.
+    */
+  val usesTheFirstFunction: Applicative[List] = new Applicative[List]:
+    override def pure[A](a: A): List[A] = List(a)
+    override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
+      ff.take(1).flatMap(f => fa.map(f))
+
+  /** Like `usesTheFirstFunction`: reversing one function changes nothing. */
+  val reversesTheFunctions: Applicative[List] = new Applicative[List]:
+    override def pure[A](a: A): List[A] = List(a)
+    override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
+      ff.reverse.flatMap(f => fa.map(f))
+
   /** `LazyList`, since a lawful `pure` for it is infinite (chapter 02, exercise
     * 04). Not a case class's `==`, which would never finish on one: `prefix`
     * is what it is compared by, and its `toString` prints that prefix.

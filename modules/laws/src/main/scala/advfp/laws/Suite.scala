@@ -39,14 +39,15 @@ object Suite:
 
   def applicative[F[_]: Applicative](lift: [X] => Gen[X] => Gen[F[X]])(using Eq[F[Int]]): Suite =
     val fas = lift[Int](ints)
+    val ffs = lift[Fun[Int, Int]](fs)
 
     Suite(
       name = "Applicative",
       parents = functor(lift) :: Nil,
       laws = ApplicativeLaws.identity(fas) ::
-        ApplicativeLaws.composition(fas, fs) ::
         ApplicativeLaws.homomorphism(ints, fs) ::
-        ApplicativeLaws.interchange(ints, fs) ::
+        ApplicativeLaws.interchange(ints, ffs) ::
+        ApplicativeLaws.composition(fas, ffs) ::
         ApplicativeLaws.mapAndPure(fas, fs) :: Nil
     )
 
