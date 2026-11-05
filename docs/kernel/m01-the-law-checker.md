@@ -1,0 +1,550 @@
+# M1 — the law checker
+
+A property-based testing tool, and the law suites built on it. Every later test
+in `laws` and `kernel` uses it. M2 is accepted only when `Monad[IO]` passes
+these suites, so M1 has to be done before chapter 08 ends.
+
+Scope and acceptance criteria: [CURRICULUM.md](../../CURRICULUM.md#m1--the-law-checker).
+This document turns them into decisions. The decisions with alternatives worth
+remembering are in [`decisions/`](decisions/); this document links to them
+instead of repeating them.
+
+Status: **draft**, 2026-10-28. M1 starts after chapter 06, not after
+chapter 02 as planned. The delay helps: `State` (chapter 03) is the shape of
+`Gen`, and the lazy structures of chapter 04 are what a shrink tree needs.
+
+## The problem
+
+Chapters 01 and 02 check laws with `forAllSamples` on hand-picked samples, and
+both chapters end on how that fails. A functor that reverses its list passes
+the identity law on every palindrome. A `List` `ap` with its loops swapped
+passes every applicative law and fails only the agreement with `flatMap`, on
+samples with at least two functions and two values. Hand-picked samples see
+only the bugs someone thought to fear.
+
+The checker replaces the picking: it generates many samples, and when one
+fails, it reduces the failing sample to a minimal one before reporting it. A
+report that says `List(0, 1)` explains the bug. A report that says a
+40-element list does not.
+
+## Modules
+
+```mermaid
+graph LR
+  typeclasses --> laws
+  typeclasses --> kernel
+  laws -. test .-> kernel
+```
+
+- **`modules/typeclasses`**, package `typeclasses`: `Eq`, `Semigroup`,
+  `Monoid`, `Functor`, `Applicative`, `Monad`, `Foldable`, `Traverse`, and
+  their instances for the standard types the suites are tested against
+  (`Int`, `Option`, `Either[E, *]`, `List`). One hierarchy for the whole
+  kernel. See [ADR 0001](decisions/0001-a-typeclasses-module.md), and
+  [ADR 0007](decisions/0007-one-instance-per-type.md) for where the
+  instances live.
+- **`modules/laws`**, package `laws`: generators, shrinking, the runner,
+  and the law suites. Its main sources depend on `typeclasses` only. No munit
+  either: the curriculum allows munit only in tests.
+- **`modules/kernel`** depends on `typeclasses` for compile and on `laws` for
+  test.
+
+Like `laws` and `kernel`, `typeclasses` is written by Thiago only, except the
+tests and Scaladoc (see
+[ADR 0006](decisions/0006-tests-and-scaladoc-in-the-milestones.md)). The build
+change (a new project, `verify`, and the table in `CLAUDE.md`) comes first, on
+this branch.
+
+## The types
+
+These are the shapes and the promises. The signatures are a starting point,
+not a contract: the code may find better ones, and a change of shape gets a
+line in the decisions.
+
+### Seed
+
+A pure, splittable pseudo-random generator: `next` gives a value and a new
+seed, and `split` gives two seeds whose streams are independent. SplitMix64
+does both in a few lines, with good statistical quality.
+
+Splitting is needed, not optional. In `ga.flatMap(f)`, `ga` and `f(a)` each
+get their own half of the seed. When the shrinker replaces `a` with a smaller
+`a'`, `f(a')` is generated from the *same* half that `f(a)` was. With one
+threaded seed, the second half would depend on how many random numbers `ga`
+consumed, and a smaller `a` would change everything after it.
+
+### Size
+
+A non-negative `Int`, as an opaque type with a smart constructor. Generators
+of collections use it as their upper bound. The runner raises it from 0 to
+`maxSize` over the run, so the first tests are small and the empty cases are
+tried early.
+
+### Tree
+
+```scala
+final case class Tree[A](value: A, shrinks: LazyList[Tree[A]])
+```
+
+A value and its smaller candidates, each with its own candidates. The tree is
+lazy because it is infinite in practice, and the shrinker walks one path
+through it. It is a monad, and `Gen`'s monad is built on it. See
+[ADR 0003](decisions/0003-integrated-shrinking.md).
+
+**Why `LazyList`.** It is lazy per element: looking for the first candidate
+that still fails computes the candidates up to that one and no further. An
+`Eval[List[Tree[A]]]` would build every sibling at once, the thousand
+one-element-shorter lists of a thousand-element list included, and getting
+laziness per element from `Eval` means writing a stream on top of it, which is
+`LazyList` again. `LazyList` is also in the standard library, while chapter
+04's `Eval` lives in `solutions`, which `laws` cannot depend on. Its
+memoization neither helps nor hurts: the shrinker visits each node once.
+Decided 2026-10-30.
+
+**Trap.** `Tree`'s `==` is not usable: on `LazyList` it forces both trees
+whole, and a tree from a generator is infinite in practice. Trees are compared
+down to a bounded depth. Likewise `LazyList(a, b, c)` evaluates its arguments
+at once; candidates are built with `#::`, `unfold` or `map` over a lazy source.
+
+**Promise.** Every value in a generator's tree is a value the generator could
+have produced. `choose(10, 20)` never shrinks to 0. This promise is what
+integrated shrinking buys, and the tests check it.
+
+### Gen
+
+```scala
+final case class Gen[A](run: (Seed, Size) => Tree[A])
+```
+
+A pure function of the seed and the size. That is `State[Seed, A]` from
+chapter 03 with a size beside it and a tree around the result, but written
+directly: `laws` does not depend on the course's `State`. `map` and `flatMap`
+are member methods, so for-comprehensions work on `Gen`
+([ADR 0009](decisions/0009-gen-syntax-as-member-methods.md)).
+
+**Promises.** Deterministic: the same seed and size give the same tree.
+Lawful in distribution: `flatMap` splits the seed, so the monad laws cannot
+hold seed by seed, and they are checked on histograms over fixed seeds; the
+functor laws do hold seed by seed. Independent: the two sides of `flatMap`
+draw uncorrelated numbers. See
+[ADR 0010](decisions/0010-gen-is-lawful-in-distribution.md). The checker
+checks its own generator, which previews how M2 compares two `IO`s.
+
+The primitive generators are the ones the suites need, and no more: `const`,
+`choose(lo, hi)` for `Int` (shrinks toward the bound nearest to 0), `bool`,
+`oneOf`, `frequency`, `pairs`, `listOf` (shrinks by dropping elements, then by
+shrinking them), `option`, `either`, and `fun` (below).
+
+`bool` is uniform, ignores the size, and shrinks `true` to `false`.
+`oneOf(first, rest*)` chooses among generators, not values (a value is
+`const(a)`, and `option` and `either` need generators), so an empty `oneOf`
+does not compile. It draws the index with `choose(0, n - 1)` and binds it with
+`flatMap`, so it is uniform over the alternatives, shrinks to an earlier
+alternative first (the first one is the simplest), and then within the one
+chosen. Decided 2026-11-02.
+
+`frequency(first: (Int, Gen[A]), rest: (Int, Gen[A])*)` is `oneOf` with
+weights: each alternative is drawn in proportion to its weight, and it shrinks
+the same way, to an earlier alternative first. A weight of 0 or less, or
+weights that add up to more than `Int.MaxValue`, are rejected at the call: an
+alternative never drawn could still be reached by shrinking, against the
+promise that every value in the tree is one the generator produces.
+
+`option(g)` is `None` a quarter of the time, since the laws of `Option` need
+`Some` to say anything, and `either(l, r)` is `Left` half the time. Both shrink
+to `None` or `Left` first, then within the value.
+
+`pairs(a, b)` draws `a` and `b` from the two halves of a split seed, so the two
+sides are independent, and shrinks `a` first, then `b`: it is
+`a.flatMap(x => b.map((x, _)))`, so once `b` shrinks, `a` is fixed. Laws over two values, and the entries of
+`fun`, need it. Decided 2026-11-03.
+
+`listOf(g)` draws its length uniformly from 0 to the size, and each element
+from a seed of its own. It shrinks by removing elements first, in blocks whose
+length halves: the whole list (so the empty list comes first), then each block
+of `n / 2`, `n / 4`, and so on down to single elements, from left to right.
+Then it shrinks one element at a time, from left to right, through that
+element's own candidates. A 30-element list reaches a small one in a few
+steps, where removing one element at a time would take up to 30.
+
+`fun(keys, values)` is a table of `listOf` entries, each a `pairs` of a key
+and a value, with a default from `values`. So the table has at most size
+entries, and it shrinks as a list: the empty table, the constant function,
+first. The default shrinks last. Decided 2026-11-02.
+
+### Fun
+
+```scala
+final case class Fun[A, B](table: Map[A, B], default: B):
+  def apply(a: A): B = table.getOrElse(a, default)
+```
+
+A generated function, as a finite table plus a default. It prints as
+`{1 -> [2, 3], 2 -> [], _ -> [5]}`, and it shrinks by dropping entries, then
+by shrinking keys and values. See
+[ADR 0005](decisions/0005-functions-as-finite-tables.md).
+
+### Eq
+
+```scala
+trait Eq[A]:
+  def eqv(x: A, y: A): Boolean
+```
+
+What the suites compare with, never `==`. It lives in `typeclasses`, since the
+kernel will compare tables with it. An instance for a structure that may be
+infinite compares a prefix, and says how long. See
+[ADR 0004](decisions/0004-equality-as-a-typeclass.md).
+
+### Law
+
+```scala
+final case class Law[A](lhs: A, rhs: A):
+  def holds(using Eq[A]): Boolean
+
+extension [A](lhs: A) def <->(rhs: A): Law[A]
+```
+
+A law is an equation, not a `Boolean`. The checker asks `holds`, which
+compares the two sides with `Eq`, and when they differ, reports both.
+"Associativity failed" says that something is wrong. The two sides say what.
+`holds` is on `Law`, not in the runner, so `Law` is tested on its own, before
+`Prop` exists.
+
+`<->` builds a law, so a suite reads as the equation it checks. It is
+top-level in package `laws`: the suites and `laws`' tests see it without an
+import, and an extension in `Law`'s companion would not be found on an `Int`.
+Its precedence is that of `<`, above `|`, so a side written with `|+|` needs
+parentheses: `(a |+| b) |+| c <-> a |+| (b |+| c)` reads as
+`(a |+| b) |+| (c <-> a) |+| (b |+| c)` and does not compile
+(`Found:    advfp.laws.Law[Int]`, `Required: Int`).
+
+### Prop, the runner and the report
+
+A property is a generator of inputs and a function from an input to a `Law`
+(or to a `Boolean`, for properties that are not equations). An exception the
+function throws is a failure like any other, and its input is shrunk the same
+way.
+
+```scala
+enum Verdict:
+  case Holds
+  case Fails(lhs: String, rhs: String)
+
+trait Testable[R]:
+  def verdict(r: R): Verdict
+
+object Testable:
+  given Testable[Boolean]
+  given [B] => (Eq[B]) => Testable[Law[B]]
+
+final case class Prop[A](gen: Gen[A], verdict: A => Verdict)
+
+object Prop:
+  def forAll[A, R](gen: Gen[A])(f: A => R)(using Testable[R]): Prop[A]
+```
+
+The type of a law's sides, `B`, is settled when the property is built:
+`Testable[Law[B]]` asks `holds` with the `Eq[B]` it was given, and keeps the
+sides as `toString`, which is what the report prints. So `Prop[A]` knows only
+its input, and a suite keeps properties over different sides in one
+`List[Prop[?]]`. A `Boolean` property fails with empty sides: the report
+already has the counter-example, and repeating it as a side would label it as
+half of an equation there is not.
+
+One `forAll` with a `Testable`, not two overloads, one for `Law` and one for
+`Boolean`. Those were tried first (2026-11-03): Scala picks an overload by its
+first argument list, `(gen)`, which both accept, so every call with an untyped
+lambda fails with `Ambiguous overload. The overloaded alternatives of method
+forAll in object Prop with types` ... `both match arguments`. With `Testable`,
+`A` comes from `gen`, `R` from the lambda, and a result with no instance (an
+`Int` by mistake) does not compile. `Prop[A, B]`
+would need `Eq[B]` in the runner and a suite would need the wildcard twice. An
+opaque `Prop` with the runner inside, as in ScalaCheck, could be tested only by
+running it.
+
+The runner, not `forAll`, catches what `verdict` throws, so `Prop` stays
+plain data and failures are handled in one place: the report carries the
+exception.
+
+`check(prop, config)` returns a value, not an assertion:
+
+```scala
+final case class Config(
+    tests: Int = 100,
+    maxSize: Int = 30,
+    seed: Long = System.nanoTime(),
+    maxShrinks: Int = 1000
+)
+
+enum Failure:
+  case Unequal(lhs: String, rhs: String)
+  case Threw(error: Throwable)
+
+final case class Report[A](
+    seed: Long,
+    size: Size,
+    test: Int,
+    original: A,
+    shrunk: A,
+    failure: Failure,
+    shrinks: Int,
+    exhausted: Boolean
+)
+
+enum Result[A]:
+  case Passed(tests: Int)
+  case Failed(report: Report[A])
+
+def check[A](prop: Prop[A], config: Config = Config()): Result[A]
+def recheck[A](prop: Prop[A], seed: Long, size: Size, config: Config = Config()): Result[A]
+```
+
+A `Report` holds what is needed to understand and reproduce the failure: the
+seed and size of the failing test, the test's number, the original
+counter-example, the shrunk one, how it fails at the shrunk one (both sides of
+the law, or the exception it threw), the number of shrink steps taken, and
+whether the shrink limit stopped it. Tests are numbered from 1, so `test` is
+the count of tests run, the failing one included. `original` and `shrunk` are values, not
+strings, so a test can say the shrink reached exactly `100`.
+
+**Seeds.** A run starts from `Seed(config.seed)`, and test *i* gets its own
+`Seed(n)`, with `n` drawn by `next` from the run's seed. A seed made by
+`split` has a gamma of its own and cannot be rebuilt from a printed number,
+so the tests' seeds are made from a `Long` instead, and the report gives that
+`Long`. `recheck(prop, report.seed, report.size)` runs that one test again and
+shrinks it again, without running the ones before it.
+
+**Sizes.** Test *i*, from 0 to `tests - 1`, has size
+`i * (maxSize + 1) / tests`: the sizes from 0 to `maxSize` are spread evenly
+over the run, and the first test is always of size 0.
+
+**Defaults.** 100 tests, `maxSize` 30, and at most 1000 shrink candidates
+tried. `Config` rejects fewer than one test, and a negative `maxSize` or
+shrink limit, when it is built rather than in the middle of a run. The seed defaults to `System.nanoTime()`, evaluated at each `Config()`,
+so `check` stays a pure function of the property and the configuration, and
+the one impure choice is made where it shows and reported where it is needed.
+
+**Shrinking** is greedy: from the failing node, take the first candidate that
+still fails, and repeat until none does or the limit is reached. Greedy does
+not always find the global minimum, but it is predictable, and the order of
+candidates (most aggressive first: the origin, then halves) gets close in
+practice. Any failure counts as still failing, so an input that fails by
+inequality may shrink to one that throws. The limit counts candidates tried,
+not steps taken: a node with endlessly many candidates that pass would never
+take a step, and that is what the limit is there to stop. `shrinks` in the
+report counts the steps, the path to the minimum, and `exhausted` says the
+limit stopped the shrink before it reached one.
+
+**Exceptions.** The runner catches `NonFatal` only. An `OutOfMemoryError` or
+an interruption is not a counter-example.
+
+## The law suites
+
+A suite is a name, its parent suites, and a list of named properties. `Monad`
+includes `Applicative`, which includes `Functor`, so checking `Monad[Option]`
+checks all three, and a report names the law that failed.
+
+The element types are fixed at `Int` and the functions at `Fun[Int, Int]` (or
+`Fun[Int, F[Int]]`). For a law over any `A`, parametricity means the instance
+cannot behave differently on `Int` than elsewhere (chapter 01, exercise 04).
+`Int` with distinct values is enough to see order and duplication.
+
+| suite | laws |
+| --- | --- |
+| Semigroup | associativity |
+| Monoid | left identity, right identity |
+| Functor | identity, composition |
+| Applicative | identity, homomorphism, interchange, composition; `map` agrees with `pure(f).ap` |
+| Monad | left identity, right identity, associativity; `ap` agrees with `flatMap` |
+| Traverse | identity (`traverse` in `Id` is `map`), composition (in `Nested[Option, List]`), naturality restricted to `Option → List`; `foldLeft` agrees with `traverse` in `Const` |
+
+```scala
+final case class Suite(name: String, parents: List[Suite], laws: List[(String, Prop[?])]):
+  def all: List[(String, Prop[?])]
+
+object Suite:
+  def semigroup[A: Semigroup: Eq](as: Gen[A]): Suite
+  def monoid[A: Monoid: Eq](as: Gen[A]): Suite
+  def functor[F[_]: Functor](lift: [X] => Gen[X] => Gen[F[X]])(using Eq[F[Int]]): Suite
+  def applicative[F[_]: Applicative](lift: [X] => Gen[X] => Gen[F[X]])(using Eq[F[Int]]): Suite
+  def monad[F[_]: Monad](lift: [X] => Gen[X] => Gen[F[X]])(using Eq[F[Int]]): Suite
+  def traverse[F[_]: Traverse](lift: [X] => Gen[X] => Gen[F[X]])(using Eq[F[Int]]): Suite
+```
+
+`all` gives the parents' laws first, without repeating one, each named with its
+suite as `Monad: associativity`, so a report names the law that failed. The
+suites are named as in the table above, and the laws too:
+`Applicative: map agrees with pure(f).ap`, `Monad: ap agrees with flatMap`.
+
+What a suite asks for is the instance, plus `Eq` for what it compares, and a
+generator for what it quantifies over. For a type constructor that generator
+is `lift`, polymorphic in the element, not a `Gen[F[Int]]`: the composition law
+of `Applicative` needs an `F[Int => Int]`, which a `Gen[F[Int]]` cannot produce.
+`[X] => (g: Gen[X]) => Gen.listOf(g)` is `List`'s, and the same with
+`Gen.option` is `Option`'s. Decided 2026-11-04, correcting the first draft, which asked for
+`Gen[F[Int]]`.
+
+The suites over a type constructor draw the elements, and the keys and values
+of the functions, from one small range, `Gen.choose(-5, 5)`. A `Fun` is a table
+of at most size entries plus a default, so in a wide range its keys almost never
+meet the elements, and it acts as the constant function at its default. After a
+constant function every element is equal, and a wrong instance can hide. Measured
+on 2026-11-04 with `FunctorLaws.composition` over `List`, 20 seeds, the default
+`Config`, against a functor that reverses the list:
+
+| range | lawful functor fails | reversing functor fails |
+| --- | --- | --- |
+| `-5..5` | 0 of 20 | 20 of 20 |
+| `-1000..1000` | 0 of 20 | 0 of 20 |
+| `-1000000..1000000` | 0 of 20 | 0 of 20 |
+
+So widening the range does not add coverage: it switches the law off, and the run
+stays green. Identity still catches this functor at any range, since it takes no
+function, so the range protects what only the laws over functions can see.
+
+The functions in a law must have the effects the law is about, or a wrong instance
+passes it. `interchange`, `composition` and `ap` agrees with `flatMap` take an
+`F[Fun[Int, Int]]` from `lift`: with functions built by `pure`, a `List` `ap` that
+used only the first function, and one that reversed the functions, passed the whole
+suite on 20 seeds. `left identity` and `associativity` of `Monad` take a
+`Fun[Int, F[Int]]`, whose effect depends on the value, which is what `flatMap` adds
+to `ap`: measured on 2026-11-05, `associativity` with `F[Fun[Int, Int]]` lets
+`diagonal` pass on 5 of 5 seeds, and with `Fun[Int, F[Int]]` catches it on 20 of 20.
+
+Each law is written in an object for its typeclass, `SemigroupLaws.associativity`,
+which returns its name with its property, `(String, Prop[(A, A, A)])`. The objects
+keep apart the names the table repeats, `associativity` of `Semigroup` and of
+`Monad`, and a function in `Suite` only assembles: name, parents, laws. The name
+travels with the law, so a list cannot pair one with another's property. The
+alternative was laws as bare equations, `associativity(a, b, c): Law[A]`, with
+generators and names in the suite, as Cats has them. That split pays when the
+laws are reused by other test frameworks; here there is one runner. The objects
+are `private[laws]`: `Suite` stays the public surface. Decided 2026-11-04.
+
+`Id`, `Const` and `Nested` are used by the Traverse suite only, so they live in
+`laws`, not in `typeclasses`. Chapter 09 makes `Const` the subject of a chapter.
+Here it is just a helper.
+
+| type | shape | `Applicative` |
+| --- | --- | --- |
+| `Id[A]` | the alias `type Id[A] = A` | `pure` is the value, `ap` applies the function |
+| `Const[M, A]` | a case class with `value: M`, where `A` is phantom | needs `Monoid[M]`: `pure` is `empty`, `ap` combines the function's `M` first, so effects run left to right |
+| `Nested[G, H, A]` | a case class with `value: G[H[A]]` | needs both applicatives: `G`'s `ap`, with `H`'s inside |
+
+`Id` is an alias so that its result is `F[Int]` itself, with no `.value`; the
+compiler cannot infer `G = Id`, so each call names it.
+
+The laws are named `identity`, `composition`, `naturality` and `foldLeft agrees
+with traverse`, with `Functor` as the only parent: `Foldable` has no suite of its
+own. The functions are `Fun[Int, Option[Int]]` and `Fun[Int, List[Int]]`.
+
+| law | one side | the other |
+| --- | --- | --- |
+| identity | `traverse` in `Id` with `f` | `map` with `f` |
+| composition | `traverse` in `Nested[Option, List, _]` with `f` then `g`, then `.value` | `traverse` with `f`, then `.map` of `traverse` with `g` |
+| naturality | `traverse` in `Option` with `f`, then `.toList` | `traverse` in `List` with `f(a).toList` |
+| `foldLeft` agrees with `traverse` | `traverse` in `Const[List[Int], _]` with `a => Const(List(a))`, then `.value` | `foldLeft` from the empty list, appending |
+
+The suite asks for no more `Eq` than the others: the composed results are
+`Option[List[F[Int]]]` and `List[F[Int]]`, which the `Eq` of `Option` and `List`
+derive from `Eq[F[Int]]`. Naturality is restricted to `toList`, a morphism of
+applicatives, so that one case does not ask for a `~>` type. `Const` gathers a
+`List[Int]`, not a sum, because a sum cannot see the order: a `foldLeft` that
+walked from the right would agree with it. Decided 2026-11-05.
+
+As in the other suites, the functions must have effects. `f` gives `None` sometimes
+and `g` lists of 0 to 2 elements: with only `Some`s and one-element lists, a
+`traverse` that skips the `None`s in `Option` and one that keeps a single result
+in `List` passed on 20 of 20 seeds, and with these both fail on 20 of 20. Then
+`composition` needs a limit: `traverse` in `List` multiplies the lengths, so a
+`fa` of 30 elements, the default `maxSize`, could give 2^30 results. It is capped at
+size 8, on `fa` only; `naturality` needs no cap, since `toList` of an `Option` has
+at most one element. Measured on 2026-11-05: at caps of 4, 6 and 8, 20 seeds take
+under 100 ms, and the fixtures are caught at each. The uncapped case was not run.
+
+## Boundaries
+
+- **`laws` returns values; tests assert.** `check` returns a `Result`. A
+  test-side helper turns `Failed(report)` into an munit failure whose message
+  is the report. That helper is written once in `laws`' tests and once in
+  `kernel`'s, which do not share test code. It is a few lines.
+- **No reflection, no macros.** A suite is ordinary values and functions.
+- **Printing is `toString`.** No `Show` typeclass in M1. `Fun` and the test
+  fixtures override `toString` where the default is unreadable. If `toString`
+  turns out not to be enough, a `Show` belongs in `typeclasses` and gets its
+  own decision.
+
+## Out of scope
+
+- A general `Cogen` (functions from any input type). Tables cover `Int` and
+  any type with usable equality, which is all M1 needs.
+- Filtering (`suchThat`) and the "gave up" result it would need. A generator
+  that produces only valid values is always better, and nothing here needs
+  one.
+- Stateful and model-based testing. M4 may want it, and its design decides.
+- Shrinking through `flatMap` without regenerating. The limitation is
+  described in ADR 0003.
+
+## Test plan
+
+The tests of `laws` itself, written alongside the code:
+
+- **Seed.** `split` halves differ from each other and from the parent. Neither
+  `next` nor `split` mutates anything (a reused seed gives the same value).
+- **Determinism.** For every primitive generator, the same seed and size give
+  the same tree, compared to a fixed depth.
+- **Shrink promises.** `choose(lo, hi)` shrinks stay in range, including
+  ranges that exclude 0 and ranges at `Int.MinValue` and `Int.MaxValue`, where
+  "halve the distance" overflows if written naively. `listOf` shrinks are
+  sublists of the original. `Fun` shrinks are tables with fewer entries or
+  smaller keys and values.
+- **Shrinking finds the edge.** `x < 100` over `choose(0, 1000)` shrinks to
+  exactly `100`. `xs.sum < 10` shrinks to a list whose sum is exactly 10.
+- **Reproducibility.** Running again with a report's seed and size gives the
+  same failing input.
+- **Gen is a monad in distribution.** The functor laws hold seed by seed,
+  the monad laws in distribution, and the two sides of `flatMap` are
+  independent (ADR 0010).
+- **Each suite discriminates.** It passes a lawful instance and fails an
+  unlawful one, with the failure reported against the right law.
+
+### Acceptance
+
+The unlawful instances of chapters 01 and 02, recreated as fixtures in
+`laws`' tests against `typeclasses` (see
+[ADR 0002](decisions/0002-fixtures-for-the-unlawful-instances.md)). Each must
+fail the named law, with a shrunk counter-example of the shape shown.
+
+| from | instance | fails | shrunk counter-example |
+| --- | --- | --- | --- |
+| — | `Semigroup[Int]` by subtraction | associativity | `a = 0, b = 0, c = ±1` |
+| ch01 pitfalls | `Monoid[Int]` with `*` and `empty = 0` | left identity | `a = ±1` |
+| ch01 ex 04 | `Functor[List]` that reverses | identity | two distinct elements, one of them 0 |
+| ch02 ex 01 | `Monad[Either[Int, *]]` whose `ap` keeps the value's `Left` | `ap` agrees with `flatMap` | `Left(0)` and `Left(±1)` |
+| ch02 ex 01 | `Monad[List]` whose `ap` swaps the loops | `ap` agrees with `flatMap` | two functions, two values |
+| ch02 ex 04 | `Applicative[ZipList]` with a one-element `pure` | identity | a `ZipList` of two elements |
+| ch02 ex 04 | `ZipList` with `diagonal` as `flatMap` | associativity | one side a single element shorter, `m` of 2 to 11 elements (see below) |
+| — | `Traverse[List]` that drops the last element | identity | a one-element list |
+
+Only the first two columns are fixed. The shrunk shapes are what a good shrink
+should reach. If one of them turns out unreachable with greedy shrinking, the
+test asserts what is reached, and the gap goes in the decisions.
+
+`diagonal` is the one that turned out so. A two-element `m` exists and greedy
+shrinking finds it only sometimes: on 2026-11-05, over seeds 0 to 39, `m` ended with
+2 elements on 9 seeds, 3 on 11, 4 on 8, 5 on 8, 7 on 3 and 11 on 1. The failure
+sits at a position, read through the lists in both tables, so shortening `m`
+alone moves it, and no single step keeps it. The sides always end as zeros with
+the right one element shorter, and that is what the test asserts.
+
+The ZipList fixtures compare with a prefix `Eq`. The bound is above `maxSize`,
+so every finite list generated is compared whole (ADR 0004).
+
+M1 is done when all of this is green under `sbt verify`. The branch,
+`milestone-01`, is then merged with a merge commit and the merge tagged `m01`.
+
+## Open questions
+
+None at the moment.
+

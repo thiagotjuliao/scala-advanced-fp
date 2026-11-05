@@ -16,14 +16,18 @@ file wins.
 | --- | --- |
 | `modules/core`, `modules/exercises`, `modules/solutions`, `docs/theory` | Claude, chapter by chapter |
 | `docs/kernel/` — design documents and ADRs | Thiago and Claude, together |
-| `modules/laws`, `modules/kernel` | **Thiago only** |
+| `modules/typeclasses`, `modules/laws`, `modules/kernel` — implementations | **Thiago only** |
+| `modules/typeclasses`, `modules/laws`, `modules/kernel` — tests and Scaladoc | Claude |
 
-**Claude does not write source code in `modules/laws` or `modules/kernel`** —
-no implementations, no tests, no stubs, not even a fix, however small. The
-milestones exist so that they are built by hand from an empty module. In those
-modules Claude reviews, explains, points at the bug, and helps with the design
-document; the code is written by Thiago. If a task seems to need code there,
-stop and say so instead.
+**In `modules/typeclasses`, `modules/laws` and `modules/kernel` Claude writes
+the tests and the Scaladoc, and nothing else** — no implementations, no stubs,
+not even a fix, however small: every trait, type, method and instance is
+Thiago's. The milestones exist so that they are built by hand from an empty
+module. There Claude also reviews, explains, points at the bug, and helps with
+the design document. If a task seems to need implementation code there, stop
+and say so instead. A test Claude writes is checked by reintroducing the bug it
+targets and watching it go red. See
+[ADR 0006](docs/kernel/decisions/0006-tests-and-scaladoc-in-the-milestones.md).
 
 ## Before writing a chapter
 
@@ -46,15 +50,15 @@ as plain code.
 and watching it fail for the right reason. A law checked only on samples where
 every instance agrees passes for a wrong instance too.
 
-**The chapters' specs never depend on `laws` or `kernel`.** Laws in specs are
-checked with `forAllSamples` from `CourseSuite`, on hand-picked samples. The
-specs must not lean on code the learner is still writing.
+**The chapters' specs never depend on `typeclasses`, `laws` or `kernel`.** Laws
+in specs are checked with `forAllSamples` from `CourseSuite`, on hand-picked
+samples. The specs must not lean on code the learner is still writing.
 
 ## Commands
 
 | command | |
 | --- | --- |
-| `sbt verify` | the gate: formatting, `core`, `solutions`, `laws` and `kernel` with `testFull`, `exercises/Test/compile` |
+| `sbt verify` | the gate: formatting, `core`, `solutions`, `typeclasses`, `laws` and `kernel` with `testFull`, `exercises/Test/compile` |
 | `sbt practice` | `exercises/testFull` — red by design |
 | `./scripts/finish-chapter.sh NN` | stage, verify the staged tree, commit, tag `chNN`, push |
 | `./scripts/solve-chapter.sh NN BRANCH` | learner side: commit chapter NN's solved exercises to BRANCH and push; never `main` |
@@ -66,8 +70,8 @@ possible run is the one that ran nothing.
 
 - Scala 3 indentation syntax, formatted by `.scalafmt.conf`. Run `sbt scalafmtAll`.
 - English everywhere: code, comments, documents, commit messages.
-- `core`, `solutions`, `laws` and `kernel` compile their main sources with
-  `CompilerFlags.strict`; a warning there is a defect.
+- `core`, `solutions`, `typeclasses`, `laws` and `kernel` compile their main
+  sources with `CompilerFlags.strict`; a warning there is a defect.
 - Commits for chapters are `chapter NN — lowercase title`; tags are `chNN`,
   annotated. Chapters are committed and tagged by `finish-chapter`, not by hand.
 - Mutation in the runtime chapters (an interpreter loop, an `AtomicReference`)

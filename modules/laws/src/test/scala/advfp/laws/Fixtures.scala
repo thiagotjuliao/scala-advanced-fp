@@ -1,0 +1,189 @@
+package advfp.laws
+
+import advfp.typeclasses.*
+
+/** The unlawful instances the suites must catch, recreated against
+  * `typeclasses` (docs/kernel/decisions/0002-fixtures-for-the-unlawful-instances.md).
+  * None of them is a given: a test that wants one says so, in a scope of its
+  * own, so the lawful instances stay the default everywhere else.
+  */
+object Fixtures:
+  type OrInt[A] = Either[Int, A]
+
+  /** Not associative: `(a - b) - c` and `a - (b - c)` differ by `2c`. */
+  val subtraction: Semigroup[Int] = new Semigroup[Int]:
+    override def combine(x: Int, y: Int): Int = x - y
+
+  /** Chapter 01, pitfalls: associative, with an `empty` that absorbs. */
+  val timesWithZero: Monoid[Int] = new Monoid[Int]:
+    override def empty: Int = 0
+    override def combine(x: Int, y: Int): Int = x * y
+
+  /** Associative, and `0` is an identity on the left only: `a |+| 0` is `0`.
+    * `timesWithZero` breaks both identities, so it cannot tell them apart.
+    */
+  val keepsTheRight: Monoid[Int] = new Monoid[Int]:
+    override def empty: Int = 0
+    override def combine(x: Int, y: Int): Int = y
+
+  /** The mirror of `keepsTheRight`: `0` is an identity on the right only. */
+  val keepsTheLeft: Monoid[Int] = new Monoid[Int]:
+    override def empty: Int = 0
+    override def combine(x: Int, y: Int): Int = x
+
+  /** Chapter 01, exercise 04. */
+  val reversing: Functor[List] = new Functor[List]:
+    override def map[A, B](fa: List[A])(f: A => B): List[B] = fa.reverse.map(f)
+
+  /** Chapter 02, exercise 01: a lawful applicative, but when both are `Left`
+    * `flatMap` would keep the function's.
+    */
+  val keepsTheValuesLeft: Monad[OrInt] = new Monad[OrInt]:
+    override def pure[A](a: A): OrInt[A] = Right(a)
+    override def flatMap[A, B](fa: OrInt[A])(f: A => OrInt[B]): OrInt[B] = fa.flatMap(f)
+    override def ap[A, B](ff: OrInt[A => B])(fa: OrInt[A]): OrInt[B] =
+      fa match
+        case Left(e) => Left(e)
+        case Right(a) => ff.map(_(a))
+
+  /** Chapter 02, exercise 01: a lawful applicative, but `flatMap` would run the
+    * functions as the outer loop.
+    */
+  val swapsTheLoops: Monad[List] = new Monad[List]:
+    override def pure[A](a: A): List[A] = List(a)
+    override def flatMap[A, B](fa: List[A])(f: A => List[B]): List[B] = fa.flatMap(f)
+    override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
+      fa.flatMap(a => ff.map(_(a)))
+
+  /** Lawful as long as `ff` comes from `pure`, which has one function: only a
+    * law with a generated `F[Int => Int]` can see that the others are dropped.
+    */
+  val usesTheFirstFunction: Applicative[List] = new Applicative[List]:
+    override def pure[A](a: A): List[A] = List(a)
+    override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
+      ff.take(1).flatMap(f => fa.map(f))
+
+  /** Like `usesTheFirstFunction`: reversing one function changes nothing. */
+  val reversesTheFunctions: Applicative[List] = new Applicative[List]:
+    override def pure[A](a: A): List[A] = List(a)
+    override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
+      ff.reverse.flatMap(f => fa.map(f))
+
+  /** `pure` has two elements, so `pure(f).ap(pure(a))` has four. */
+  val pureTwice: Applicative[List] = new Applicative[List]:
+    override def pure[A](a: A): List[A] = List(a, a)
+    override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
+      ff.flatMap(f => fa.map(f))
+
+  /** `pure` and `ap` are lawful, and `map` does not agree with them. */
+  val mapReverses: Applicative[List] = new Applicative[List]:
+    override def pure[A](a: A): List[A] = List(a)
+    override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
+      ff.flatMap(f => fa.map(f))
+    override def map[A, B](fa: List[A])(f: A => B): List[B] = fa.reverse.map(f)
+
+  /** Left identity fails only for an `f` with an effect of its own: `pure`
+    * loses nothing here, so an `f` built from `pure` would not show it.
+    */
+  val firstResultOfOne: Monad[List] = new Monad[List]:
+    override def pure[A](a: A): List[A] = List(a)
+    override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
+      ff.flatMap(f => fa.map(f))
+    override def flatMap[A, B](fa: List[A])(f: A => List[B]): List[B] =
+      fa match
+        case List(a) => f(a).take(1)
+        case _ => fa.flatMap(f)
+
+  /** Right identity fails, on two elements; on `pure(a)`, one element, nothing
+    * is lost, so left identity holds.
+    */
+  val dropsTheRest: Monad[List] = new Monad[List]:
+    override def pure[A](a: A): List[A] = List(a)
+    override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
+      ff.flatMap(f => fa.map(f))
+    override def flatMap[A, B](fa: List[A])(f: A => List[B]): List[B] =
+      fa.take(1).flatMap(f)
+
+  /** `List`'s lawful traversal, for the fixtures below to change one thing in. */
+  private class ListTraversal extends Traverse[List]:
+    override def map[A, B](fa: List[A])(f: A => B): List[B] = fa.map(f)
+    override def foldLeft[A, B](fa: List[A])(z: B)(f: (B, A) => B): B = fa.foldLeft(z)(f)
+    override def traverse[G[_]: Applicative, A, B](fa: List[A])(f: A => G[B]): G[List[B]] =
+      Traverse[List].traverse(fa)(f)
+
+  /** Loses the last element, in every applicative. */
+  val dropsTheLast: Traverse[List] = new ListTraversal:
+    override def traverse[G[_]: Applicative, A, B](fa: List[A])(f: A => G[B]): G[List[B]] =
+      super.traverse(fa.dropRight(1))(f)
+
+  /** Walks with the effects from the right, keeping the shape. That is a lawful
+    * traversal in its own right: only `foldLeft`'s agreement sees it.
+    */
+  val effectsFromTheRight: Traverse[List] = new ListTraversal:
+    override def traverse[G[_]: Applicative, A, B](fa: List[A])(f: A => G[B]): G[List[B]] =
+      fa.foldRight(Applicative[G].pure(List.empty[B])): (a, gbs) =>
+        Applicative[G].map2(gbs, f(a))((bs, b) => b :: bs)
+
+  /** Keeps one result when `G` is `List`, so it only shows when an `f` gives two
+    * elements somewhere: a generator of one-element lists never sees it. Looks
+    * at `G` at run time, which a lawful traversal has no way to want.
+    */
+  val firstResultInList: Traverse[List] = new ListTraversal:
+    override def traverse[G[_]: Applicative, A, B](fa: List[A])(f: A => G[B]): G[List[B]] =
+      val walked = super.traverse(fa)(f)
+      (walked: Any) match
+        case results: List[?] => results.take(1).asInstanceOf[G[List[B]]]
+        case _ => walked
+
+  /** Skips the `None`s when `G` is `Option`, so it only shows when an `f` gives
+    * `None` somewhere: a generator of `Some`s never sees it.
+    */
+  val skipsTheNones: Traverse[List] = new ListTraversal:
+    override def traverse[G[_]: Applicative, A, B](fa: List[A])(f: A => G[B]): G[List[B]] =
+      (Applicative[G].pure(()): Any) match
+        case _: Option[?] =>
+          Some(fa.flatMap(a => (f(a): Any).asInstanceOf[Option[B]])).asInstanceOf[G[List[B]]]
+        case _ => super.traverse(fa)(f)
+
+  /** `LazyList`, since a lawful `pure` for it is infinite (chapter 02, exercise
+    * 04). Not a case class's `==`, which would never finish on one: `prefix`
+    * is what it is compared by, and its `toString` prints that prefix.
+    */
+  final class ZipList[A](val values: LazyList[A]):
+    def prefix: List[A] = values.take(ZipList.bound).toList
+    override def toString: String = prefix.mkString("ZipList(", ", ", ")")
+
+  object ZipList:
+    /** Above `Config`'s default `maxSize`, so every finite list generated is
+      * compared whole (docs/kernel/decisions/0004-equality-as-a-typeclass.md).
+      */
+    val bound: Int = 100
+
+    given Eq[ZipList[Int]] = (x, y) => x.prefix == y.prefix
+
+  val zipLists: [X] => Gen[X] => Gen[ZipList[X]] =
+    [X] => (g: Gen[X]) => Gen.listOf(g).map(xs => ZipList(LazyList.from(xs)))
+
+  /** Chapter 02, exercise 04: `pure` is a single element, so zipping with it
+    * cuts the other side down to one.
+    */
+  val onePure: Applicative[ZipList] = new Applicative[ZipList]:
+    override def pure[A](a: A): ZipList[A] = ZipList(LazyList(a))
+    override def ap[A, B](ff: ZipList[A => B])(fa: ZipList[A]): ZipList[B] =
+      ZipList(ff.values.zip(fa.values).map((f, a) => f(a)))
+
+  /** Chapter 02, exercise 04: the `flatMap` that agrees with zipping, and is
+    * not associative: a list that ends early in the middle loses what follows.
+    */
+  val diagonal: Monad[ZipList] = new Monad[ZipList]:
+    override def pure[A](a: A): ZipList[A] = ZipList(LazyList.continually(a))
+    override def ap[A, B](ff: ZipList[A => B])(fa: ZipList[A]): ZipList[B] =
+      ZipList(ff.values.zip(fa.values).map((f, a) => f(a)))
+    override def flatMap[A, B](fa: ZipList[A])(f: A => ZipList[B]): ZipList[B] =
+      ZipList(
+        fa.values.zipWithIndex
+          .map((a, i) => f(a).values.drop(i).headOption)
+          .takeWhile(_.isDefined)
+          .flatten
+      )
+end Fixtures
