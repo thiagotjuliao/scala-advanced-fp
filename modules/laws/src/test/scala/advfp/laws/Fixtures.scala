@@ -69,6 +69,41 @@ object Fixtures:
     override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
       ff.reverse.flatMap(f => fa.map(f))
 
+  /** `pure` has two elements, so `pure(f).ap(pure(a))` has four. */
+  val pureTwice: Applicative[List] = new Applicative[List]:
+    override def pure[A](a: A): List[A] = List(a, a)
+    override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
+      ff.flatMap(f => fa.map(f))
+
+  /** `pure` and `ap` are lawful, and `map` does not agree with them. */
+  val mapReverses: Applicative[List] = new Applicative[List]:
+    override def pure[A](a: A): List[A] = List(a)
+    override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
+      ff.flatMap(f => fa.map(f))
+    override def map[A, B](fa: List[A])(f: A => B): List[B] = fa.reverse.map(f)
+
+  /** Left identity fails only for an `f` with an effect of its own: `pure`
+    * loses nothing here, so an `f` built from `pure` would not show it.
+    */
+  val firstResultOfOne: Monad[List] = new Monad[List]:
+    override def pure[A](a: A): List[A] = List(a)
+    override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
+      ff.flatMap(f => fa.map(f))
+    override def flatMap[A, B](fa: List[A])(f: A => List[B]): List[B] =
+      fa match
+        case List(a) => f(a).take(1)
+        case _ => fa.flatMap(f)
+
+  /** Right identity fails, on two elements; on `pure(a)`, one element, nothing
+    * is lost, so left identity holds.
+    */
+  val dropsTheRest: Monad[List] = new Monad[List]:
+    override def pure[A](a: A): List[A] = List(a)
+    override def ap[A, B](ff: List[A => B])(fa: List[A]): List[B] =
+      ff.flatMap(f => fa.map(f))
+    override def flatMap[A, B](fa: List[A])(f: A => List[B]): List[B] =
+      fa.take(1).flatMap(f)
+
   /** `LazyList`, since a lawful `pure` for it is infinite (chapter 02, exercise
     * 04). Not a case class's `==`, which would never finish on one: `prefix`
     * is what it is compared by, and its `toString` prints that prefix.

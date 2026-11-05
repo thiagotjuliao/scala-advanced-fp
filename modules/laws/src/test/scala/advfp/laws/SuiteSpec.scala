@@ -71,6 +71,10 @@ class SuiteSpec extends FunSuite with PropAssertions:
     val top = Suite("D", List(left, right), List("d" -> prop))
     assertEquals(names(top), List("R: r", "L: l", "T: t", "D: d"))
 
+  test("all tells laws apart by name, since two builds of one law are different values"):
+    val top = Suite("D", List(Suite.semigroup(ints), Suite.semigroup(ints)), Nil)
+    assertEquals(names(top), semigroupLaws)
+
   test("each suite has the laws of the design, its parents' first"):
     assertEquals(names(Suite.semigroup(ints)), semigroupLaws)
     assertEquals(names(Suite.monoid(ints)), monoidLaws)
@@ -120,7 +124,7 @@ class SuiteSpec extends FunSuite with PropAssertions:
   test("a functor that reverses breaks identity, on two distinct elements, one of them 0"):
     given Functor[List] = reversing
     val suite = Suite.functor[List](lists)
-    assert(broken(suite).contains("Functor: identity"), broken(suite))
+    assertEquals(broken(suite), functorLaws)
     reports(suite, "Functor: identity").foreach: report =>
       parts(report.shrunk) match
         case List(xs: List[?]) =>
@@ -156,6 +160,28 @@ class SuiteSpec extends FunSuite with PropAssertions:
     assert(found.contains("Applicative: interchange"), found)
     assert(found.contains("Applicative: composition"), found)
 
+  test("a pure with two elements breaks homomorphism"):
+    given Applicative[List] = pureTwice
+    val found = broken(Suite.applicative[List](lists))
+    assert(found.contains("Applicative: homomorphism"), found)
+
+  test("a map that disagrees with pure and ap breaks their agreement"):
+    given Applicative[List] = mapReverses
+    val found = broken(Suite.applicative[List](lists))
+    assert(found.contains("Applicative: map agrees with pure(f).ap"), found)
+
+  test("a flatMap that truncates f's result on pure(a) breaks left identity, not right"):
+    given Monad[List] = firstResultOfOne
+    val found = broken(Suite.monad[List](lists))
+    assert(found.contains("Monad: left identity"), found)
+    assert(!found.contains("Monad: right identity"), found)
+
+  test("a flatMap that drops all but the first element breaks right identity, not left"):
+    given Monad[List] = dropsTheRest
+    val found = broken(Suite.monad[List](lists))
+    assert(found.contains("Monad: right identity"), found)
+    assert(!found.contains("Monad: left identity"), found)
+
   test("a ZipList with a one-element pure breaks identity, on two elements"):
     given Applicative[ZipList] = onePure
     val suite = Suite.applicative[ZipList](zipLists)
@@ -163,10 +189,16 @@ class SuiteSpec extends FunSuite with PropAssertions:
     reports(suite, "Applicative: identity").foreach: report =>
       assertEquals(lengths(report), List(2), report)
 
-  test("a ZipList with diagonal as flatMap breaks only associativity, with m of two elements"):
+  // Not the design's `m` of two elements: greedy shrinking stops between 2 and
+  // 11 (docs/kernel/m01-the-law-checker.md#acceptance). What holds on every
+  // seed is what the failure is, a side that ends one element early.
+  test("a ZipList with diagonal as flatMap breaks only associativity, a side ending early"):
     given Monad[ZipList] = diagonal
     val suite = Suite.monad[ZipList](zipLists)
     assertEquals(broken(suite), List("Monad: associativity"))
     reports(suite, "Monad: associativity").foreach: report =>
-      assertEquals(lengths(report), List(2), report)
+      assert(lengths(report).forall(_ >= 2), report)
+      report.failure match
+        case Failure.Unequal(lhs, rhs) => assertEquals(lhs, rhs.dropRight(1) + ", 0)", report)
+        case Failure.Threw(error) => fail(s"threw $error")
 end SuiteSpec

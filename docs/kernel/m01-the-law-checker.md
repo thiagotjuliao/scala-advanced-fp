@@ -403,6 +403,15 @@ So widening the range does not add coverage: it switches the law off, and the ru
 stays green. Identity still catches this functor at any range, since it takes no
 function, so the range protects what only the laws over functions can see.
 
+The functions in a law must have the effects the law is about, or a wrong instance
+passes it. `interchange`, `composition` and `ap` agrees with `flatMap` take an
+`F[Fun[Int, Int]]` from `lift`: with functions built by `pure`, a `List` `ap` that
+used only the first function, and one that reversed the functions, passed the whole
+suite on 20 seeds. `left identity` and `associativity` of `Monad` take a
+`Fun[Int, F[Int]]`, whose effect depends on the value, which is what `flatMap` adds
+to `ap`: measured on 2026-11-05, `associativity` with `F[Fun[Int, Int]]` lets
+`diagonal` pass on 5 of 5 seeds, and with `Fun[Int, F[Int]]` catches it on 20 of 20.
+
 Each law is written in an object for its typeclass, `SemigroupLaws.associativity`,
 which returns its name with its property, `(String, Prop[(A, A, A)])`. The objects
 keep apart the names the table repeats, `associativity` of `Semigroup` and of
@@ -478,12 +487,19 @@ fail the named law, with a shrunk counter-example of the shape shown.
 | ch02 ex 01 | `Monad[Either[Int, *]]` whose `ap` keeps the value's `Left` | `ap` agrees with `flatMap` | `Left(0)` and `Left(±1)` |
 | ch02 ex 01 | `Monad[List]` whose `ap` swaps the loops | `ap` agrees with `flatMap` | two functions, two values |
 | ch02 ex 04 | `Applicative[ZipList]` with a one-element `pure` | identity | a `ZipList` of two elements |
-| ch02 ex 04 | `ZipList` with `diagonal` as `flatMap` | associativity | `m` of two elements |
+| ch02 ex 04 | `ZipList` with `diagonal` as `flatMap` | associativity | one side a single element shorter, `m` of 2 to 11 elements (see below) |
 | — | `Traverse[List]` that drops the last element | identity | a one-element list |
 
 Only the first two columns are fixed. The shrunk shapes are what a good shrink
 should reach. If one of them turns out unreachable with greedy shrinking, the
 test asserts what is reached, and the gap goes in the decisions.
+
+`diagonal` is the one that turned out so. A two-element `m` exists and greedy
+shrinking finds it only sometimes: on 2026-11-05, over seeds 0 to 39, `m` ended with
+2 elements on 9 seeds, 3 on 11, 4 on 8, 5 on 8, 7 on 3 and 11 on 1. The failure
+sits at a position, read through the lists in both tables, so shortening `m`
+alone moves it, and no single step keeps it. The sides always end as zeros with
+the right one element shorter, and that is what the test asserts.
 
 The ZipList fixtures compare with a prefix `Eq`. The bound is above `maxSize`,
 so every finite list generated is compared whole (ADR 0004).

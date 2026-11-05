@@ -118,3 +118,54 @@ private[laws] object ApplicativeLaws:
       Prop.forAll(gen): (fa, f) =>
         Applicative[F].map(fa)(f(_)) <-> Applicative[F].pure(f(_)).ap(fa)
 end ApplicativeLaws
+
+private[laws] object MonadLaws:
+  def leftIdentity[F[_]: Monad](
+      as: Gen[Int],
+      fs: Gen[Fun[Int, F[Int]]]
+  )(using Eq[F[Int]]): (String, Prop[(Int, Fun[Int, F[Int]])]) =
+    val gen =
+      for
+        a <- as
+        f <- fs
+      yield (a, f)
+
+    "left identity" ->
+      Prop.forAll(gen): (a, f) =>
+        val fa = Monad[F].pure(a)
+        Monad[F].flatMap(fa)(f(_)) <-> f(a)
+
+  def rightIdentity[F[_]: Monad](fas: Gen[F[Int]])(using Eq[F[Int]]): (String, Prop[F[Int]]) =
+    "right identity" ->
+      Prop.forAll(fas): fa =>
+        fa <-> Monad[F].flatMap(fa)(Monad[F].pure)
+
+  def associativity[F[_]: Monad](fas: Gen[F[Int]], fs: Gen[Fun[Int, F[Int]]])(using
+      Eq[F[Int]]
+  ): (String, Prop[(F[Int], Fun[Int, F[Int]], Fun[Int, F[Int]])]) =
+    val gen =
+      for
+        fa <- fas
+        f <- fs
+        g <- fs
+      yield (fa, f, g)
+
+    "associativity" ->
+      Prop.forAll(gen): (fa, f, g) =>
+        val compose: Int => F[Int] = a => Monad[F].flatMap(f(a))(g(_))
+        Monad[F].flatMap(Monad[F].flatMap(fa)(f(_)))(g(_)) <-> Monad[F].flatMap(fa)(compose)
+
+  def apAndFlatMap[F[_]: Monad](fas: Gen[F[Int]], ffs: Gen[F[Fun[Int, Int]]])(using
+      Eq[F[Int]]
+  ): (String, Prop[(F[Int], F[Fun[Int, Int]])]) =
+    val gen =
+      for
+        fa <- fas
+        ff <- ffs
+      yield (fa, ff)
+
+    "ap agrees with flatMap" ->
+      Prop.forAll(gen): (fa, ff) =>
+        val ff_ : F[Int => Int] = Monad[F].map(ff)(_.apply)
+        Monad[F].ap(ff_)(fa) <-> Monad[F].flatMap(ff_)(f => Monad[F].map(fa)(f(_)))
+end MonadLaws
