@@ -136,6 +136,8 @@ two.
 Shared state without locks, as effects: `Ref` on `AtomicReference`, `Deferred`
 as a one-shot promise, and the primitives built from those two alone.
 
+- `uncancelable`, `poll` and `onCancel` in the `IO` given, which a cancellation-safe
+  primitive cannot do without.
 - `Ref` with `update`, `modify` and `getAndUpdate`, retried on contention.
 - `Deferred` with `get` blocking semantically, not on a thread.
 - `Semaphore` from `Ref` and `Deferred`, fair and cancellation-safe.

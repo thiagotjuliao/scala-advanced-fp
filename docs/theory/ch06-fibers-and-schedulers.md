@@ -295,7 +295,7 @@ together they are the starting list for milestone 2.
 | --- | --- |
 | take a thread away from a fiber | a fiber that never suspends keeps its thread for good: the `spin` pitfall, which starves `pool(1)` |
 | interrupt a running `delay` | cancel waits for the `delay` to end: about 490 ms for a `Thread.sleep(500)` |
-| run anything when a fiber is canceled | a canceled fiber runs no handler, so it cannot release what it holds; chapter 08's `Resource` needs `onCancel` and uncancelable regions |
+| run anything when a fiber is canceled | a canceled fiber runs no handler, so it cannot release what it holds; chapter 07 adds `onCancel` and uncancelable regions, and chapter 08's `Resource` builds on them |
 | cancel a fiber's children with it | `racePair`'s fibers outlive a racer that is canceled while it waits |
 | end a fiber killed by a fatal error | the error escapes the loop and `complete` is never called. Measured 2026-10-23: a `StackOverflowError` in a `delay` kills its thread, and a fiber joining it waits until `unsafeRun` times out |
 | unschedule the timer of a canceled `sleep` | the timer still fires, and its callback finds the suspension claimed and does nothing |
