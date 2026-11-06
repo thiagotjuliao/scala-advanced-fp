@@ -218,9 +218,10 @@ class Exercise04Spec extends CourseSuite:
       // Waits for the count, then settles so that a count going too far shows: a
       // producer late to it only makes this take longer.
       def countAt(n: Int): IO[Int] =
-        IO.delay(offered.get).flatMap: seen =>
-          if seen >= n then settle.flatMap(_ => IO.delay(offered.get))
-          else IO.sleep(1.milli).flatMap(_ => countAt(n))
+        IO.delay(offered.get)
+          .flatMap: seen =>
+            if seen >= n then settle.flatMap(_ => IO.delay(offered.get))
+            else IO.sleep(1.milli).flatMap(_ => countAt(n))
       val io =
         for
           q <- Queue.bounded[Int](2)
