@@ -7,5 +7,18 @@
 # both 5 and 7.
 *.sh text eol=lf
 *.ps1 text eol=crlf
+
+# Binary files are stored, diffed and merged byte for byte. text=auto alone
+# decides by content, and a PDF with no NUL byte in its first 8000 bytes passes
+# the diff and merge check for text: its diff runs to hundreds of thousands of
+# lines, and a three-way merge of two versions would splice them line by line.
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.jar binary
 *.sbt text eol=lf
 *.scala text eol=lf
