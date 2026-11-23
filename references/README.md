@@ -13,8 +13,12 @@ matters there; this file says where the reference is.
 
 The repository is public, so a PDF is committed only when its licence says it
 may be shared. Everything else is kept as a link here and as a local copy for
-offline reading. To fill `local/` on a new machine, download the links marked
-**local** below into it, under the file name given.
+offline reading. To fill `local/` on a new machine, run
+`./scripts/fetch-references.sh` (or `.ps1`): it downloads every **local**
+entry below that is missing, under the file name given, and lists the few that
+need fetching by hand (PostScript originals, release pages). With `--check`
+(`-Check`) it downloads nothing and reports what is missing, and files in
+`local/` or `open/` this list does not name.
 
 **Status** says how the reference can be read:
 

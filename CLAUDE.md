@@ -62,6 +62,7 @@ samples. The specs must not lean on code the learner is still writing.
 | `sbt practice` | `exercises/testFull` — red by design |
 | `./scripts/finish-chapter.sh NN` | stage, verify the staged tree, commit, tag `chNN`, push |
 | `./scripts/solve-chapter.sh NN BRANCH` | learner side: commit chapter NN's solved exercises to BRANCH and push; never `main` |
+| `./scripts/fetch-references.sh [--check]` | fill the ignored `references/local/` from [the manifest](references/README.md) |
 
 `testFull`, not `test`: under sbt 2 `test` is incremental and its greenest
 possible run is the one that ran nothing.
